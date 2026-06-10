@@ -1,10 +1,67 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500;600&display=swap');
+/* ─────────────────────────────────────────────────────────────────
+   FORGE — globals.css
+   Phase 0: Design System Foundation
+   All colour, typography, motion, and spacing defined as CSS
+   custom properties. Tailwind is used for layout utilities only.
+   Never write hex values in component files — reference tokens here.
+───────────────────────────────────────────────────────────────── */
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-* {
+/* ─── TOKENS ─────────────────────────────────────────────────── */
+:root {
+  /* Backgrounds — layered depth system */
+  --bg-base:      #0A0A0B;   /* page canvas          */
+  --bg-surface:   #111113;   /* cards, panels        */
+  --bg-elevated:  #1A1A1E;   /* dropdowns, popovers  */
+  --bg-border:    #2A2A30;   /* dividers, strokes    */
+
+  /* Brand — Ember (not blue) */
+  --accent:       #E8671A;
+  --accent-warm:  #FF9B45;
+  --accent-dim:   rgba(232, 103, 26, 0.14);
+  --accent-glow:  rgba(232, 103, 26, 0.28);
+
+  /* Text */
+  --text-primary:   #F2F2F3;
+  --text-secondary: #A0A0A8;
+  --text-muted:     #50505A;
+
+  /* Semantic */
+  --success:  #2DD4BF;
+  --error:    #F87171;
+  --info:     #60A5FA;
+  --warning:  #FBBF24;
+
+  /* Motion */
+  --ease-out:    cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --dur-fast:    150ms;
+  --dur-normal:  250ms;
+  --dur-slow:    400ms;
+
+  /* Spacing scale (8dp base) */
+  --sp-1:  4px;   --sp-2:  8px;   --sp-3:  12px;  --sp-4:  16px;
+  --sp-5:  20px;  --sp-6:  24px;  --sp-8:  32px;  --sp-10: 40px;
+  --sp-12: 48px;  --sp-16: 64px;  --sp-20: 80px;
+
+  /* Typography */
+  --font-display: var(--font-space-grotesk), 'Space Grotesk', sans-serif;
+  --font-body:    var(--font-jakarta), 'Plus Jakarta Sans', sans-serif;
+  --font-mono:    var(--font-jetbrains), 'JetBrains Mono', monospace;
+
+  /* Radius */
+  --radius-sm:  4px;
+  --radius-md:  8px;
+  --radius-lg:  12px;
+  --radius-xl:  16px;
+  --radius-pill: 999px;
+}
+
+/* ─── RESET ──────────────────────────────────────────────────── */
+*, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
@@ -13,66 +70,155 @@
 html {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  scroll-behavior: smooth;
+  /* Prevent iOS font-size inflation */
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
-  background-color: #080808;
-  color: #F0F0F0;
-  font-family: 'Plus Jakarta Sans', sans-serif;
+  background-color: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.6;
 }
 
-/* ─── Touch performance ──────────────────────────────────────────────────────
-   Removes the 300ms tap delay on mobile — critical for a mobile-first app.
-*/
-button,
-a,
-[role="button"],
-[tabindex="0"] {
-  touch-action: manipulation;
-}
-
-/* ─── Scrollbar ──────────────────────────────────────────────────────────── */
-::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
-}
-
-::-webkit-scrollbar-track {
-  background: #111111;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #1f1f1f;
-  border-radius: 2px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #2563EB;
-}
-
-/* ─── Selection ──────────────────────────────────────────────────────────── */
+/* ─── SELECTION ──────────────────────────────────────────────── */
 ::selection {
-  background: #2563eb33;
-  color: #F0F0F0;
+  background: var(--accent-dim);
+  color: var(--text-primary);
 }
 
-/* ─── Focus ring ─────────────────────────────────────────────────────────── */
+/* ─── FOCUS RING ─────────────────────────────────────────────── */
 :focus-visible {
-  outline: 1px solid #2563EB;
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-/* ─── Reduced motion ─────────────────────────────────────────────────────────
-   Respects the OS-level "reduce motion" setting. Disables all animations and
-   transitions for users who need it (WCAG 2.3.3 / AAA, strongly recommended).
-*/
+/* ─── SCROLLBAR ──────────────────────────────────────────────── */
+::-webkit-scrollbar        { width: 3px; height: 3px; }
+::-webkit-scrollbar-track  { background: var(--bg-base); }
+::-webkit-scrollbar-thumb  { background: var(--bg-border); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+
+/* ─── TYPOGRAPHY HELPERS ─────────────────────────────────────── */
+.font-display { font-family: var(--font-display); }
+.font-mono    { font-family: var(--font-mono); }
+.font-body    { font-family: var(--font-body); }
+
+/* Tabular numerics for monospace readouts */
+.font-mono,
+[class*="font-mono"] {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── COLOUR UTILITIES (Tailwind overrides) ──────────────────── */
+.text-primary   { color: var(--text-primary);   }
+.text-secondary { color: var(--text-secondary); }
+.text-muted     { color: var(--text-muted);     }
+.text-accent    { color: var(--accent);         }
+.text-success   { color: var(--success);        }
+.text-error     { color: var(--error);          }
+.text-info      { color: var(--info);           }
+.text-warning   { color: var(--warning);        }
+
+.bg-base        { background-color: var(--bg-base);     }
+.bg-surface     { background-color: var(--bg-surface);  }
+.bg-elevated    { background-color: var(--bg-elevated); }
+.border-forge   { border-color: var(--bg-border);       }
+
+/* ─── GRAIN TEXTURE (applied via JS on body) ─────────────────── */
+.noise-overlay {
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  opacity: 0.025;
+  pointer-events: none;
+  z-index: 9999;
+}
+
+/* ─── FORGE GRID BACKGROUND ──────────────────────────────────── */
+.forge-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.forge-grid::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(var(--accent-dim) 1px, transparent 1px),
+    linear-gradient(90deg, var(--accent-dim) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+.forge-grid::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse 75% 55% at 50% 0%, rgba(232,103,26,0.07) 0%, transparent 70%);
+}
+
+/* ─── SCROLL REVEAL ──────────────────────────────────────────── */
+.reveal {
+  opacity: 0;
+  transform: translateY(24px);
+  transition:
+    opacity var(--dur-slow) var(--ease-out),
+    transform var(--dur-slow) var(--ease-out);
+}
+.reveal.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ─── MOTION SAFETY ──────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration:       0.01ms !important;
-    animation-iteration-count: 1     !important;
-    transition-duration:      0.01ms !important;
-    scroll-behavior:          auto   !important;
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .reveal,
+  .reveal.visible {
+    opacity: 1;
+    transform: none;
   }
 }
+
+/* ─── CURSOR BLINK (terminal) ────────────────────────────────── */
+@keyframes forge-blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+.forge-cursor {
+  display: inline-block;
+  width: 8px;
+  height: 1em;
+  background: var(--accent);
+  animation: forge-blink 1s step-end infinite;
+  vertical-align: text-bottom;
+  margin-left: 1px;
+}
+
+/* ─── PULSE ──────────────────────────────────────────────────── */
+@keyframes forge-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.4; transform: scale(0.85); }
+}
+.forge-pulse {
+  animation: forge-pulse 2s ease-in-out infinite;
+}
+
+/* ─── SPIN ───────────────────────────────────────────────────── */
+@keyframes forge-spin {
+  to { transform: rotate(360deg); }
+}
+.forge-spin {
+  animation: forge-spin 0.8s linear infinite;
+}
+
+/* ─── SAFE AREA INSETS (mobile) ──────────────────────────────── */
+.safe-top    { padding-top:    env(safe-area-inset-top);    }
+.safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
