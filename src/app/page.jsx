@@ -103,9 +103,8 @@ const TYPE_COLOURS = {
 }
 
 function Terminal() {
-  const [lines, setLines] = useState([])   // { text, color, done }
-  const [typing, setTyping] = useState(null) // { text, color, cursor }
-  const seqRef    = useRef(0)
+  const [lines, setLines] = useState([])
+  const [typing, setTyping] = useState(null)
   const lineRef   = useRef(0)
   const charRef   = useRef(0)
   const timerRef  = useRef(null)
@@ -118,7 +117,6 @@ function Terminal() {
   function typeChar() {
     const seq = TERMINAL_SEQUENCE
     if (lineRef.current >= seq.length) {
-      // End of sequence — pause then restart
       setTyping(null)
       scheduleNext(3500, () => {
         lineRef.current = 0
@@ -155,7 +153,6 @@ function Terminal() {
       setTyping({ text: partial, color })
       scheduleNext(delay, typeChar)
     } else {
-      // Line complete — commit to lines array
       setTyping(null)
       setLines(prev => [...prev, { text: fullText, color }])
       lineRef.current++
@@ -184,7 +181,6 @@ function Terminal() {
         maxWidth: '580px',
       }}
     >
-      {/* Traffic lights */}
       <div
         className="flex items-center gap-2 px-4"
         style={{
@@ -204,12 +200,10 @@ function Terminal() {
         </span>
       </div>
 
-      {/* Body */}
       <div
         className="p-5 font-mono text-xs overflow-y-auto"
         style={{ minHeight: '200px', maxHeight: '240px', lineHeight: '1.85' }}
       >
-        {/* Prompt prefix on first line */}
         {lines.length === 0 && !typing && (
           <span style={{ color: 'var(--text-muted)' }}>
             <span style={{ color: 'var(--accent)' }}>$ </span>
@@ -247,13 +241,13 @@ function Hero({ onSignup }) {
   return (
     <section
       className="relative min-h-screen flex flex-col items-center justify-center px-6 pt-24 pb-20"
-      style={{ overflowX: 'hidden', overflowY: 'visible' }}
+      /* FIXED: Removed overflowX/overflowY inline styles.
+         These created a clipping context that blocked scroll on mobile.
+         The section now flows naturally with the document. */
     >
-      {/* Grid background */}
       <div className="forge-grid" aria-hidden="true" />
 
       <div className="relative z-10 flex flex-col items-center text-center gap-8 w-full max-w-2xl mx-auto">
-        {/* Badge */}
         <div
           className="inline-flex items-center gap-2 px-4 py-1.5 rounded-pill font-mono text-xs tracking-widest uppercase reveal"
           style={{
@@ -269,10 +263,8 @@ function Hero({ onSignup }) {
           Repository-Aware AI Coding Agent
         </div>
 
-        {/* Wordmark */}
         <ForgeWordmark size="2xl" underline className="reveal" />
 
-        {/* Subhead */}
         <p
           className="text-xl font-body font-light leading-relaxed max-w-lg reveal"
           style={{ color: 'var(--text-secondary)' }}
@@ -286,7 +278,6 @@ function Hero({ onSignup }) {
           </strong>
         </p>
 
-        {/* CTAs */}
         <div className="flex items-center gap-4 flex-wrap justify-center reveal">
           <Button variant="primary" size="lg" onClick={onSignup}>
             Connect Your Repo — It's Free
@@ -302,7 +293,6 @@ function Hero({ onSignup }) {
           </Button>
         </div>
 
-        {/* Trust row */}
         <div
           className="flex items-center gap-6 flex-wrap justify-center font-mono text-xs reveal"
           style={{ color: 'var(--text-muted)' }}
@@ -315,7 +305,6 @@ function Hero({ onSignup }) {
           ))}
         </div>
 
-        {/* Terminal */}
         <Terminal />
       </div>
     </section>
@@ -378,7 +367,6 @@ function Problem() {
                 overflow: 'hidden',
               }}
             >
-              {/* Ghost watermark number */}
               <span
                 aria-hidden="true"
                 className="absolute font-display font-bold pointer-events-none select-none"
@@ -591,7 +579,6 @@ function Features() {
           </h2>
         </div>
 
-        {/* Bento grid */}
         <div
           className="grid gap-px reveal"
           style={{
@@ -713,7 +700,6 @@ function FinalCTA({ onSignup }) {
       className="relative px-6 py-32 overflow-hidden"
       style={{ borderTop: '1px solid var(--bg-border)' }}
     >
-      {/* Radial glow from bottom */}
       <div
         aria-hidden="true"
         className="absolute inset-0 pointer-events-none"
