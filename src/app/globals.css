@@ -1,5 +1,5 @@
 /* ─────────────────────────────────────────────────────────────────
-   FORGE — globals.css   (scroll-fix build)
+   FORGE — globals.css
 ───────────────────────────────────────────────────────────────── */
 
 @tailwind base;
@@ -45,23 +45,13 @@
   padding: 0;
 }
 
-/*
-  THE SCROLL FIX — three rules that must never change:
-  1. html must NOT have height:100% — Tailwind base adds this and it
-     locks the scroll container to the viewport, killing page scroll.
-  2. body must be position:static — relative/fixed creates a new
-     stacking/scroll context that traps children on some browsers.
-  3. noise-overlay z-index must be LOW — a z-index:9999 fixed element
-     intercepts scroll events on iOS Safari and mobile Chrome even
-     with pointer-events:none.
-*/
 html {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   scroll-behavior: smooth;
   -webkit-text-size-adjust: 100%;
-  height: auto !important;      /* override Tailwind base height:100% */
-  overflow-y: scroll;           /* always show scrollbar, prevents layout shift */
+  height: auto !important;
+  overflow-y: scroll;
 }
 
 body {
@@ -70,7 +60,7 @@ body {
   font-family: var(--font-body);
   font-size: 16px;
   line-height: 1.6;
-  position: static !important;  /* never fixed/relative — breaks mobile scroll */
+  position: static !important;
   min-height: 100vh;
   overflow-x: hidden;
 }
@@ -113,16 +103,17 @@ body {
 .bg-elevated    { background-color: var(--bg-elevated); }
 .border-forge   { border-color: var(--bg-border);       }
 
-/* ─── NOISE OVERLAY ──────────────────────────────────────────── */
+/* ─── NOISE OVERLAY ────────────────────────────────────────────
+   FIXED: removed touch-action:none which blocked mobile scroll.
+   pointer-events:none is sufficient — the overlay is decorative. */
 .noise-overlay {
   position: fixed;
   inset: 0;
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   opacity: 0.025;
   pointer-events: none;
-  touch-action: none;
   user-select: none;
-  z-index: 10;  /* MUST stay low — high z-index fixed elements eat scroll on iOS */
+  z-index: 10;
 }
 
 /* ─── FORGE GRID ─────────────────────────────────────────────── */
