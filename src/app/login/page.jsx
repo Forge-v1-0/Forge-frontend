@@ -1,44 +1,101 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+/**
+ * FORGE — Login Page
+ * Phase 2: Auth & Onboarding
+ *
+ * Split layout: left panel (product context) · right panel (form)
+ * Left hidden on mobile. No marketing copy. Just get them in.
+ */
+
+import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import ForgeWordmark from '@/components/ui/ForgeWordmark'
 import Button from '@/components/ui/Button'
 import Input from '@/components/ui/Input'
-import { Suspense } from 'react'
 
-function ForgeWordmark() {
+// ─── LEFT PANEL ────────────────────────────────────────────────────
+function LeftPanel() {
   return (
-    <div className="font-mono font-semibold text-2xl tracking-[0.15em] relative inline-block select-none">
-      <span className="text-secondary">F</span>
-      <span className="text-accent">O</span>
-      <span className="text-secondary">R</span>
-      <span className="text-secondary">G</span>
-      <span className="text-accent">E</span>
-      <span
-        className="absolute -bottom-1 left-0 w-full h-px"
-        style={{
-          background: 'linear-gradient(90deg, transparent, #2563EB, transparent)',
-        }}
-      />
+    <div
+      className="hidden lg:flex flex-col justify-between p-12 relative overflow-hidden"
+      style={{ background: 'var(--bg-surface)', borderRight: '1px solid var(--bg-border)' }}
+    >
+      {/* Grid */}
+      <div className="forge-grid" aria-hidden="true" />
+
+      <ForgeWordmark size="sm" />
+
+      <div className="relative z-10 flex flex-col gap-6">
+        <h2
+          className="font-display font-bold leading-tight"
+          style={{ fontSize: 'clamp(1.6rem, 2.5vw, 2.2rem)', letterSpacing: '-0.02em', color: 'var(--text-primary)' }}
+        >
+          Understands your codebase.
+          <span style={{ color: 'var(--accent)', display: 'block' }}>
+            Plans. Codes. Ships.
+          </span>
+        </h2>
+        <p
+          className="font-body text-sm leading-relaxed"
+          style={{ color: 'var(--text-secondary)', maxWidth: '32ch' }}
+        >
+          Repository-aware AI that reads every import, export, and dependency before writing a single line.
+        </p>
+
+        {/* Mini steps */}
+        <div className="flex flex-col gap-3 mt-2">
+          {[
+            'Connect your GitHub repo',
+            'Describe what you want',
+            'Review the plan',
+            'Approve the code',
+            'Merge your branch',
+          ].map((step, i) => (
+            <div key={step} className="flex items-center gap-3">
+              <span
+                className="font-mono text-xs w-5"
+                style={{ color: 'rgba(232,103,26,0.5)' }}
+              >
+                {String(i + 1).padStart(2, '0')}
+              </span>
+              <span
+                className="font-body text-xs"
+                style={{ color: 'var(--text-muted)' }}
+              >
+                {step}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <p
+        className="font-mono text-xs relative z-10"
+        style={{ color: 'var(--text-muted)' }}
+      >
+        Works on web, tablet, and mobile.
+      </p>
     </div>
   )
 }
 
+// ─── FORM ──────────────────────────────────────────────────────────
 function LoginForm() {
-  const router = useRouter()
+  const router       = useRouter()
   const searchParams = useSearchParams()
-  const supabase = createClient()
+  const supabase     = createClient()
 
-  const [email, setEmail] = useState('')
+  const [email,    setEmail]    = useState('')
   const [password, setPassword] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
-  const [notice, setNotice] = useState(null)
+  const [loading,  setLoading]  = useState(false)
+  const [error,    setError]    = useState(null)
+  const [notice,   setNotice]   = useState(null)
 
   useEffect(() => {
     if (searchParams.get('signup') === 'success') {
-      setNotice('Account created. Sign in to continue.')
+      setNotice('Account created — sign in to continue.')
     }
     if (searchParams.get('error') === 'auth_failed') {
       setError('Authentication failed. Please try again.')
@@ -50,18 +107,18 @@ function LoginForm() {
     setError(null)
     setLoading(true)
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
+    const { error } = await supabase.auth.signInWithPassword({ email, password })
 
     if (error) {
-      setError(error.message)
+      setError(
+        error.message === 'Invalid login credentials'
+          ? 'Email or password is incorrect.'
+          : error.message
+      )
       setLoading(false)
       return
     }
 
-    // Session is set — middleware handles redirect to /app
     router.push('/app')
     router.refresh()
   }
@@ -70,18 +127,32 @@ function LoginForm() {
     <div className="w-full max-w-sm flex flex-col gap-8">
       {/* Header */}
       <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-semibold text-secondary">
+        {/* Mobile-only wordmark */}
+        <div className="lg:hidden mb-2">
+          <ForgeWordmark size="sm" />
+        </div>
+        <h1
+          className="font-display font-bold"
+          style={{ fontSize: '1.5rem', color: 'var(--text-primary)' }}
+        >
           Welcome back
         </h1>
-        <p className="text-sm text-muted">
+        <p className="font-body text-sm" style={{ color: 'var(--text-muted)' }}>
           Sign in to your Forge account.
         </p>
       </div>
 
       {/* Notice */}
       {notice && (
-        <div className="px-3 py-2 bg-success/10 border border-success/20 rounded">
-          <p className="text-xs text-success">{notice}</p>
+        <div
+          className="px-4 py-3 rounded-lg text-xs font-body"
+          style={{
+            background: 'rgba(45,212,191,0.08)',
+            border: '1px solid rgba(45,212,191,0.2)',
+            color: 'var(--success)',
+          }}
+        >
+          {notice}
         </div>
       )}
 
@@ -92,7 +163,7 @@ function LoginForm() {
           type="email"
           placeholder="you@example.com"
           value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          onChange={e => setEmail(e.target.value)}
           required
           autoComplete="email"
         />
@@ -102,16 +173,11 @@ function LoginForm() {
           type="password"
           placeholder="Your password"
           value={password}
-          onChange={(e) => setPassword(e.target.value)}
+          onChange={e => setPassword(e.target.value)}
           required
           autoComplete="current-password"
+          error={error}
         />
-
-        {error && (
-          <div className="px-3 py-2 bg-danger/10 border border-danger/20 rounded">
-            <p className="text-xs text-danger">{error}</p>
-          </div>
-        )}
 
         <Button
           type="submit"
@@ -119,7 +185,8 @@ function LoginForm() {
           size="lg"
           loading={loading}
           disabled={!email || !password}
-          className="w-full mt-2"
+          fullWidth
+          className="mt-2"
         >
           Sign In
         </Button>
@@ -127,17 +194,26 @@ function LoginForm() {
 
       {/* Divider */}
       <div className="flex items-center gap-3">
-        <div className="flex-1 h-px bg-border" />
-        <span className="text-xs text-muted font-mono">FORGE</span>
-        <div className="flex-1 h-px bg-border" />
+        <div className="flex-1 h-px" style={{ background: 'var(--bg-border)' }} />
+        <span className="font-mono text-xs" style={{ color: 'var(--text-muted)' }}>
+          FORGE
+        </span>
+        <div className="flex-1 h-px" style={{ background: 'var(--bg-border)' }} />
       </div>
 
-      {/* Footer note */}
-      <p className="text-xs text-muted text-center">
+      {/* Signup link */}
+      <p
+        className="font-body text-xs text-center"
+        style={{ color: 'var(--text-muted)' }}
+      >
         Don't have an account?{' '}
         <button
+          type="button"
           onClick={() => router.push('/signup')}
-          className="text-accent hover:underline"
+          className="transition-colors duration-fast"
+          style={{ color: 'var(--accent)' }}
+          onMouseEnter={e => (e.currentTarget.style.textDecoration = 'underline')}
+          onMouseLeave={e => (e.currentTarget.style.textDecoration = 'none')}
         >
           Create one
         </button>
@@ -146,50 +222,17 @@ function LoginForm() {
   )
 }
 
+// ─── PAGE ──────────────────────────────────────────────────────────
 export default function LoginPage() {
-  const router = useRouter()
-
   return (
-    <div className="min-h-screen bg-base flex flex-col">
-      {/* Background */}
-      <div
-        className="fixed inset-0 pointer-events-none"
-        style={{
-          background: 'radial-gradient(ellipse 80% 60% at 50% 0%, #2563eb08 0%, transparent 70%)',
-        }}
-      />
+    <div
+      className="min-h-screen grid lg:grid-cols-2"
+      style={{ background: 'var(--bg-base)' }}
+    >
+      <LeftPanel />
 
-      {/* Grid */}
-      <div
-        className="fixed inset-0 pointer-events-none opacity-[0.03]"
-        style={{
-          backgroundImage: `
-            linear-gradient(#2563EB 1px, transparent 1px),
-            linear-gradient(90deg, #2563EB 1px, transparent 1px)
-          `,
-          backgroundSize: '48px 48px',
-        }}
-      />
-
-      {/* Nav */}
-      <nav className="relative z-10 flex items-center justify-between px-6 py-4 border-b border-border/50">
-        <button
-          onClick={() => router.push('/')}
-          className="hover:opacity-70 transition-opacity duration-150"
-        >
-          <ForgeWordmark />
-        </button>
-        <button
-          onClick={() => router.push('/signup')}
-          className="text-xs text-muted hover:text-secondary transition-colors duration-150"
-        >
-          No account?{' '}
-          <span className="text-accent">Sign up</span>
-        </button>
-      </nav>
-
-      {/* Form */}
-      <div className="relative z-10 flex-1 flex items-center justify-center px-6 py-12">
+      {/* Right panel */}
+      <div className="flex items-center justify-center px-8 py-16">
         <Suspense fallback={null}>
           <LoginForm />
         </Suspense>
