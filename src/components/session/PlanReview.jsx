@@ -1,43 +1,320 @@
 'use client'
 
+/**
+ * FORGE — PlanReview component
+ * Phase 5: Planner Experience UI — CRITICAL FEATURE
+ *
+ * This is the most important trust screen in the product.
+ * Users see the full plan before a single line of code is written.
+ *
+ * Features:
+ * - Analysis callout (planner's reasoning)
+ * - Subtask cards: file path, badge (NEW/MODIFIED/DELETED), risk badge, instruction
+ * - Individual subtask editing (inline textarea)
+ * - Approve / Edit / Reject flow
+ * - Rejection feedback → replanning
+ * - Progress rail during execution
+ */
+
 import { useState } from 'react'
 import { apiFetch } from '@/lib/supabase/api'
 import Button from '@/components/ui/Button'
+import StatusDot from '@/components/ui/StatusDot'
 
-export default function PlanReview({ session, onApproved }) {
+// ─── RISK BADGE ────────────────────────────────────────────────────
+function RiskBadge({ risk }) {
+  const styles = {
+    low:    { color: 'var(--success)',  bg: 'rgba(45,212,191,0.1)',  border: 'rgba(45,212,191,0.2)'  },
+    medium: { color: 'var(--accent)',   bg: 'rgba(232,103,26,0.1)', border: 'rgba(232,103,26,0.2)' },
+    high:   { color: 'var(--error)',    bg: 'rgba(248,113,113,0.1)', border: 'rgba(248,113,113,0.2)' },
+  }
+  const s = styles[risk?.toLowerCase()] || styles.medium
+
+  return (
+    <span
+      className="font-mono text-xs px-2 py-0.5 rounded uppercase font-semibold tracking-wide shrink-0"
+      style={{ color: s.color, background: s.bg, border: `1px solid ${s.border}` }}
+    >
+      {risk || 'med'}
+    </span>
+  )
+}
+
+// ─── FILE BADGE ────────────────────────────────────────────────────
+function FileBadge({ type }) {
+  const styles = {
+    new:      { label: 'NEW',      color: 'var(--success)', bg: 'rgba(45,212,191,0.08)'  },
+    modified: { label: 'MODIFIED', color: 'var(--info)',    bg: 'rgba(96,165,250,0.08)'  },
+    deleted:  { label: 'DELETED',  color: 'var(--error)',   bg: 'rgba(248,113,113,0.08)' },
+  }
+  const s = styles[type?.toLowerCase()] || styles.modified
+
+  return (
+    <span
+      className="font-mono text-xs px-1.5 py-0.5 rounded shrink-0"
+      style={{ color: s.color, background: s.bg }}
+    >
+      {s.label}
+    </span>
+  )
+}
+
+// ─── SUBTASK CARD ──────────────────────────────────────────────────
+function SubtaskCard({ subtask, index, editing, onEdit, onSave, onCancel, onChange, execStatus }) {
+  const isDone    = execStatus === 'done'
+  const isRunning = execStatus === 'running'
+  const isReady   = execStatus === 'awaiting_approval'
+
+  return (
+    <div
+      className="rounded-lg transition-all duration-fast"
+      style={{
+        border: `1px solid ${isRunning ? 'var(--accent)' : isReady ? 'rgba(232,103,26,0.4)' : 'var(--bg-border)'}`,
+        background: isRunning ? 'rgba(232,103,26,0.04)' : 'var(--bg-surface)',
+        boxShadow: isRunning ? '0 0 12px rgba(232,103,26,0.12)' : 'none',
+      }}
+    >
+      {/* Card header */}
+      <div className="flex items-start gap-3 p-4 pb-3">
+        {/* Number */}
+        <span
+          className="font-mono text-xs font-semibold shrink-0 mt-0.5 w-5"
+          style={{ color: 'var(--accent)' }}
+        >
+          {String(index + 1).padStart(2, '0')}
+        </span>
+
+        {/* File + badges */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap mb-2">
+            <span
+              className="font-mono text-xs truncate"
+              style={{ color: 'var(--info)' }}
+            >
+              {subtask.file_path || 'unknown file'}
+            </span>
+            <FileBadge type={subtask.change_type || 'modified'} />
+          </div>
+
+          {/* Instruction */}
+          {editing ? (
+            <textarea
+              value={subtask.instruction}
+              onChange={e => onChange(e.target.value)}
+              rows={4}
+              className="w-full rounded-md px-3 py-2 font-mono text-xs resize-none transition-all duration-fast"
+              style={{
+                background: 'var(--bg-base)',
+                border: '1px solid var(--accent)',
+                color: 'var(--text-secondary)',
+                outline: 'none',
+                boxShadow: '0 0 0 3px var(--accent-dim)',
+              }}
+            />
+          ) : (
+            <p
+              className="font-body text-sm leading-relaxed"
+              style={{
+                color: 'var(--text-secondary)',
+                display: '-webkit-box',
+                WebkitLineClamp: editing ? 'none' : '3',
+                WebkitBoxOrient: 'vertical',
+                overflow: 'hidden',
+              }}
+            >
+              {subtask.instruction}
+            </p>
+          )}
+        </div>
+
+        {/* Risk badge */}
+        <RiskBadge risk={subtask.risk} />
+      </div>
+
+      {/* Risk reason */}
+      {subtask.risk_reason && subtask.risk !== 'low' && (
+        <div
+          className="mx-4 mb-3 px-3 py-2 rounded-md font-body text-xs leading-relaxed"
+          style={{
+            background: 'var(--bg-elevated)',
+            color: 'var(--text-muted)',
+            borderLeft: '2px solid var(--warning)',
+          }}
+        >
+          ⚠ {subtask.risk_reason}
+        </div>
+      )}
+
+      {/* Footer: edit controls or execution status */}
+      <div
+        className="flex items-center justify-between px-4 pb-3 pt-2"
+        style={{ borderTop: '1px solid var(--bg-border)' }}
+      >
+        {editing ? (
+          <div className="flex gap-2">
+            <Button variant="primary" size="sm" onClick={onSave}>
+              Save
+            </Button>
+            <Button variant="ghost" size="sm" onClick={onCancel}>
+              Cancel
+            </Button>
+          </div>
+        ) : (
+          <button
+            onClick={onEdit}
+            className="font-body text-xs transition-colors duration-fast"
+            style={{ color: 'var(--text-muted)' }}
+            onMouseEnter={e => (e.currentTarget.style.color = 'var(--accent)')}
+            onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-muted)')}
+          >
+            Edit instruction
+          </button>
+        )}
+
+        {/* Execution state */}
+        {isRunning && (
+          <div className="flex items-center gap-1.5">
+            <span
+              className="w-1.5 h-1.5 rounded-full forge-pulse"
+              style={{ background: 'var(--accent)' }}
+            />
+            <span className="font-mono text-xs" style={{ color: 'var(--accent)' }}>
+              Coding…
+            </span>
+          </div>
+        )}
+        {isDone && (
+          <div className="flex items-center gap-1.5">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+              <path d="M2.5 6.5L4.5 8.5L9.5 3.5" stroke="var(--success)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <span className="font-mono text-xs" style={{ color: 'var(--success)' }}>
+              Approved
+            </span>
+          </div>
+        )}
+        {isReady && (
+          <span
+            className="font-mono text-xs"
+            style={{ color: 'var(--accent)' }}
+          >
+            Tap to review →
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── REJECT FLOW ───────────────────────────────────────────────────
+function RejectFlow({ sessionId, onReplanned, onCancel }) {
+  const [feedback, setFeedback] = useState('')
+  const [loading,  setLoading]  = useState(false)
+  const [error,    setError]    = useState(null)
+
+  async function handleReject() {
+    setLoading(true)
+    setError(null)
+    try {
+      await apiFetch('/agent/replan', {
+        method: 'POST',
+        body: JSON.stringify({ session_id: sessionId, feedback }),
+      })
+      onReplanned()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div
+      className="rounded-lg p-4 flex flex-col gap-4"
+      style={{
+        background: 'rgba(248,113,113,0.05)',
+        border: '1px solid rgba(248,113,113,0.2)',
+      }}
+    >
+      <p className="font-body text-sm font-semibold" style={{ color: 'var(--error)' }}>
+        Reject plan
+      </p>
+      <p className="font-body text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+        Tell Forge what to do differently. Your feedback will be used to replan from scratch.
+      </p>
+      <textarea
+        value={feedback}
+        onChange={e => setFeedback(e.target.value)}
+        placeholder="e.g. Don't touch the auth routes. Focus only on the API middleware layer."
+        rows={3}
+        className="w-full rounded-md px-3 py-2 font-body text-sm resize-none transition-all duration-fast"
+        style={{
+          background: 'var(--bg-surface)',
+          border: '1px solid var(--bg-border)',
+          color: 'var(--text-primary)',
+          outline: 'none',
+        }}
+        onFocus={e => {
+          e.target.style.borderColor = 'var(--accent)'
+          e.target.style.boxShadow   = '0 0 0 3px var(--accent-dim)'
+        }}
+        onBlur={e => {
+          e.target.style.borderColor = 'var(--bg-border)'
+          e.target.style.boxShadow   = 'none'
+        }}
+      />
+      {error && (
+        <p className="font-body text-xs" style={{ color: 'var(--error)' }}>{error}</p>
+      )}
+      <div className="flex gap-2">
+        <Button
+          variant="danger"
+          size="sm"
+          loading={loading}
+          onClick={handleReject}
+        >
+          Reject & Replan
+        </Button>
+        <Button variant="ghost" size="sm" onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+// ─── PLAN REVIEW ───────────────────────────────────────────────────
+export default function PlanReview({ session, onApproved, onReplanned }) {
   const plan = session?.plan
-  const [subtasks, setSubtasks] = useState(plan?.subtasks || [])
-  const [approving, setApproving] = useState(false)
-  const [editingIndex, setEditingIndex] = useState(null)
-  const [error, setError] = useState(null)
 
-  function updateSubtask(index, field, value) {
-    setSubtasks(prev => prev.map((s, i) =>
-      i === index ? { ...s, [field]: value } : s
-    ))
+  const [subtasks,      setSubtasks]      = useState(plan?.subtasks || [])
+  const [editingIndex,  setEditingIndex]  = useState(null)
+  const [approving,     setApproving]     = useState(false)
+  const [showReject,    setShowReject]    = useState(false)
+  const [error,         setError]         = useState(null)
+
+  // During execution: tasks may arrive on session.tasks
+  const execTasks = session?.tasks || []
+
+  function updateInstruction(index, value) {
+    setSubtasks(prev =>
+      prev.map((s, i) => i === index ? { ...s, instruction: value } : s)
+    )
   }
 
   async function handleApprove() {
     setError(null)
     setApproving(true)
-
     try {
-      // Save edits first if any
       await apiFetch('/agent/edit-plan', {
         method: 'POST',
-        body: JSON.stringify({
-          session_id: session.id,
-          subtasks,
-        }),
+        body: JSON.stringify({ session_id: session.id, subtasks }),
       })
-
-      // Then approve
       await apiFetch('/agent/approve-plan', {
         method: 'POST',
         body: JSON.stringify({ session_id: session.id }),
       })
-
-      onApproved()
+      onApproved?.()
     } catch (err) {
       setError(err.message)
     } finally {
@@ -45,114 +322,124 @@ export default function PlanReview({ session, onApproved }) {
     }
   }
 
-  const riskColors = {
-    low: 'text-success border-success/20 bg-success/5',
-    medium: 'text-accent border-accent/20 bg-accent/5',
-    high: 'text-danger border-danger/20 bg-danger/5',
-  }
+  const isCoding = ['coding', 'awaiting_approval', 'done'].includes(session?.status)
 
   return (
     <div className="flex flex-col h-full overflow-y-auto">
-      {/* Header */}
-      <div className="px-4 py-3 border-b border-border shrink-0">
-        <div className="flex items-center gap-2">
-          <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
-          <span className="text-xs font-mono text-accent uppercase tracking-wider">
-            Plan Ready — Review Required
+
+      {/* ── Header ─────────────────────────────────────────────── */}
+      <div
+        className="px-5 py-4 shrink-0"
+        style={{ borderBottom: '1px solid var(--bg-border)' }}
+      >
+        <div className="flex items-center gap-2 mb-1">
+          <span
+            className="w-1.5 h-1.5 rounded-full forge-pulse"
+            style={{ background: isCoding ? 'var(--warning)' : 'var(--accent)' }}
+          />
+          <span
+            className="font-mono text-xs uppercase tracking-widest"
+            style={{ color: isCoding ? 'var(--warning)' : 'var(--accent)' }}
+          >
+            {isCoding ? 'Executing' : 'Plan Ready — Review Required'}
           </span>
         </div>
+        <p
+          className="font-display font-semibold"
+          style={{ fontSize: '0.95rem', color: 'var(--text-primary)' }}
+        >
+          {session?.task}
+        </p>
       </div>
 
-      {/* Analysis */}
+      {/* ── Analysis ───────────────────────────────────────────── */}
       {plan?.analysis && (
-        <div className="px-4 py-3 border-b border-border bg-surface/50">
-          <p className="text-xs text-muted uppercase tracking-wider font-mono mb-2">
-            Analysis
-          </p>
-          <p className="text-sm text-secondary leading-relaxed">
-            {plan.analysis}
-          </p>
+        <div
+          className="mx-5 mt-4 px-4 py-3 rounded-lg font-body text-sm leading-relaxed shrink-0"
+          style={{
+            background: 'var(--bg-surface)',
+            border: '1px solid var(--bg-border)',
+            borderLeft: '3px solid var(--info)',
+            color: 'var(--text-secondary)',
+          }}
+        >
+          {plan.analysis}
         </div>
       )}
 
-      {/* Subtasks */}
-      <div className="flex-1 px-4 py-4 flex flex-col gap-3">
-        <p className="text-xs text-muted uppercase tracking-wider font-mono">
+      {/* ── Subtasks ────────────────────────────────────────────── */}
+      <div className="flex-1 px-5 py-4 flex flex-col gap-3">
+        <p
+          className="font-mono text-xs uppercase tracking-widest mb-1"
+          style={{ color: 'var(--text-muted)' }}
+        >
           Subtasks — {subtasks.length} file{subtasks.length !== 1 ? 's' : ''}
         </p>
 
-        {subtasks.map((subtask, i) => (
-          <div
-            key={i}
-            className="flex flex-col gap-3 p-3 bg-surface border border-border rounded"
-          >
-            {/* File path + risk */}
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-mono text-accent truncate">
-                {subtask.file_path}
-              </span>
-              {subtask.risk && (
-                <span className={`
-                  text-xs font-mono px-2 py-0.5 rounded-full border shrink-0
-                  ${riskColors[subtask.risk] || riskColors.medium}
-                `}>
-                  {subtask.risk}
-                </span>
-              )}
-            </div>
-
-            {/* Instruction */}
-            {editingIndex === i ? (
-              <textarea
-                value={subtask.instruction}
-                onChange={e => updateSubtask(i, 'instruction', e.target.value)}
-                rows={4}
-                className="w-full bg-base border border-accent/30 rounded px-3 py-2 text-xs text-secondary font-mono resize-none focus:outline-none focus:border-accent"
-              />
-            ) : (
-              <p className="text-xs text-muted leading-relaxed">
-                {subtask.instruction}
-              </p>
-            )}
-
-            {/* Risk reason */}
-            {subtask.risk_reason && subtask.risk !== 'low' && (
-              <p className="text-xs text-muted/60 italic">
-                ⚠ {subtask.risk_reason}
-              </p>
-            )}
-
-            {/* Edit toggle */}
-            <button
-              onClick={() => setEditingIndex(editingIndex === i ? null : i)}
-              className="text-xs text-muted hover:text-accent transition-colors duration-150 self-start"
-            >
-              {editingIndex === i ? 'Done editing' : 'Edit instruction'}
-            </button>
-          </div>
-        ))}
+        {subtasks.map((subtask, i) => {
+          const execTask = execTasks.find(t => t.file_path === subtask.file_path)
+          return (
+            <SubtaskCard
+              key={i}
+              subtask={subtask}
+              index={i}
+              editing={editingIndex === i}
+              onEdit={() => setEditingIndex(i)}
+              onSave={() => setEditingIndex(null)}
+              onCancel={() => setEditingIndex(null)}
+              onChange={val => updateInstruction(i, val)}
+              execStatus={execTask?.status}
+            />
+          )
+        })}
       </div>
 
-      {/* Actions */}
-      <div className="px-4 py-4 border-t border-border shrink-0 flex flex-col gap-3">
-        {error && (
-          <p className="text-xs text-danger">{error}</p>
-        )}
-        <div className="flex gap-3">
-          <Button
-            variant="primary"
-            size="md"
-            loading={approving}
-            onClick={handleApprove}
-            className="flex-1"
-          >
-            Approve Plan — Start Coding
-          </Button>
+      {/* ── Actions ─────────────────────────────────────────────── */}
+      {!isCoding && (
+        <div
+          className="px-5 py-4 shrink-0 flex flex-col gap-3"
+          style={{ borderTop: '1px solid var(--bg-border)' }}
+        >
+          {error && (
+            <p className="font-body text-xs" style={{ color: 'var(--error)' }}>{error}</p>
+          )}
+
+          {showReject ? (
+            <RejectFlow
+              sessionId={session.id}
+              onReplanned={onReplanned}
+              onCancel={() => setShowReject(false)}
+            />
+          ) : (
+            <>
+              <div className="flex gap-3">
+                <Button
+                  variant="primary"
+                  size="md"
+                  loading={approving}
+                  onClick={handleApprove}
+                  className="flex-1"
+                >
+                  Approve Plan — Start Coding
+                </Button>
+                <Button
+                  variant="danger"
+                  size="md"
+                  onClick={() => setShowReject(true)}
+                >
+                  Reject
+                </Button>
+              </div>
+              <p
+                className="font-body text-xs text-center"
+                style={{ color: 'var(--text-muted)' }}
+              >
+                You can edit any instruction above before approving
+              </p>
+            </>
+          )}
         </div>
-        <p className="text-xs text-muted text-center">
-          You can edit any instruction above before approving
-        </p>
-      </div>
+      )}
     </div>
   )
 }
