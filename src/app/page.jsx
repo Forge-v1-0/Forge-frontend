@@ -247,7 +247,7 @@ function Hero({ onSignup }) {
   return (
     <section
       className="relative min-h-screen flex flex-col items-center justify-center px-6 pt-24 pb-20"
-      style={{ overflow: 'hidden' }}
+      style={{ overflowX: 'hidden', overflowY: 'visible' }}
     >
       {/* Grid background */}
       <div className="forge-grid" aria-hidden="true" />
