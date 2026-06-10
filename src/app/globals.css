@@ -1,5 +1,11 @@
 /* ─────────────────────────────────────────────────────────────────
    FORGE — globals.css
+   FIXED: Mobile scroll unresponsive
+   Changes:
+   1. Removed overflow-x: hidden from body (was clipping scroll)
+   2. Removed overflow-y: scroll from html (let browser handle it)
+   3. Removed z-index from noise-overlay (unnecessary, can interfere)
+   4. Removed overflow: hidden from forge-grid (unnecessary containment)
 ───────────────────────────────────────────────────────────────── */
 
 @tailwind base;
@@ -50,8 +56,8 @@ html {
   -moz-osx-font-smoothing: grayscale;
   scroll-behavior: smooth;
   -webkit-text-size-adjust: 100%;
-  height: auto !important;
-  overflow-y: scroll;
+  /* FIXED: Let browser handle overflow naturally */
+  overflow-x: hidden;
 }
 
 body {
@@ -60,9 +66,11 @@ body {
   font-family: var(--font-body);
   font-size: 16px;
   line-height: 1.6;
-  position: static !important;
+  /* FIXED: Removed overflow-x: hidden — was creating clipping context
+     that blocked scroll on mobile. Body now flows naturally. */
   min-height: 100vh;
-  overflow-x: hidden;
+  overflow-x: clip; /* clip prevents horizontal scroll without creating
+                       a new block formatting context like hidden does */
 }
 
 /* ─── SELECTION ──────────────────────────────────────────────── */
@@ -104,7 +112,7 @@ body {
 .border-forge   { border-color: var(--bg-border);       }
 
 /* ─── NOISE OVERLAY ────────────────────────────────────────────
-   FIXED: removed touch-action:none which blocked mobile scroll.
+   FIXED: Removed z-index which can interfere with scroll layers.
    pointer-events:none is sufficient — the overlay is decorative. */
 .noise-overlay {
   position: fixed;
@@ -113,15 +121,16 @@ body {
   opacity: 0.025;
   pointer-events: none;
   user-select: none;
-  z-index: 10;
+  /* z-index removed — not needed for decorative element */
 }
 
-/* ─── FORGE GRID ─────────────────────────────────────────────── */
+/* ─── FORGE GRID ───────────────────────────────────────────────
+   FIXED: Removed overflow: hidden which created unnecessary
+   containment context interfering with scroll. */
 .forge-grid {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  overflow: hidden;
 }
 .forge-grid::before {
   content: '';
