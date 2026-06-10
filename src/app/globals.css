@@ -1,9 +1,5 @@
 /* ─────────────────────────────────────────────────────────────────
-   FORGE — globals.css
-   Phase 0: Design System Foundation
-   All colour, typography, motion, and spacing defined as CSS
-   custom properties. Tailwind is used for layout utilities only.
-   Never write hex values in component files — reference tokens here.
+   FORGE — globals.css   (scroll-fix build)
 ───────────────────────────────────────────────────────────────── */
 
 @tailwind base;
@@ -12,52 +8,34 @@
 
 /* ─── TOKENS ─────────────────────────────────────────────────── */
 :root {
-  /* Backgrounds — layered depth system */
-  --bg-base:      #0A0A0B;   /* page canvas          */
-  --bg-surface:   #111113;   /* cards, panels        */
-  --bg-elevated:  #1A1A1E;   /* dropdowns, popovers  */
-  --bg-border:    #2A2A30;   /* dividers, strokes    */
-
-  /* Brand — Ember (not blue) */
+  --bg-base:      #0A0A0B;
+  --bg-surface:   #111113;
+  --bg-elevated:  #1A1A1E;
+  --bg-border:    #2A2A30;
   --accent:       #E8671A;
   --accent-warm:  #FF9B45;
   --accent-dim:   rgba(232, 103, 26, 0.14);
   --accent-glow:  rgba(232, 103, 26, 0.28);
-
-  /* Text */
   --text-primary:   #F2F2F3;
   --text-secondary: #A0A0A8;
   --text-muted:     #50505A;
-
-  /* Semantic */
   --success:  #2DD4BF;
   --error:    #F87171;
   --info:     #60A5FA;
   --warning:  #FBBF24;
-
-  /* Motion */
   --ease-out:    cubic-bezier(0.16, 1, 0.3, 1);
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   --dur-fast:    150ms;
   --dur-normal:  250ms;
   --dur-slow:    400ms;
-
-  /* Spacing scale (8dp base) */
   --sp-1:  4px;   --sp-2:  8px;   --sp-3:  12px;  --sp-4:  16px;
   --sp-5:  20px;  --sp-6:  24px;  --sp-8:  32px;  --sp-10: 40px;
   --sp-12: 48px;  --sp-16: 64px;  --sp-20: 80px;
-
-  /* Typography */
   --font-display: var(--font-space-grotesk), 'Space Grotesk', sans-serif;
   --font-body:    var(--font-jakarta), 'Plus Jakarta Sans', sans-serif;
   --font-mono:    var(--font-jetbrains), 'JetBrains Mono', monospace;
-
-  /* Radius */
-  --radius-sm:  4px;
-  --radius-md:  8px;
-  --radius-lg:  12px;
-  --radius-xl:  16px;
-  --radius-pill: 999px;
+  --radius-sm:  4px;  --radius-md:  8px;
+  --radius-lg: 12px;  --radius-xl: 16px;  --radius-pill: 999px;
 }
 
 /* ─── RESET ──────────────────────────────────────────────────── */
@@ -67,13 +45,23 @@
   padding: 0;
 }
 
+/*
+  THE SCROLL FIX — three rules that must never change:
+  1. html must NOT have height:100% — Tailwind base adds this and it
+     locks the scroll container to the viewport, killing page scroll.
+  2. body must be position:static — relative/fixed creates a new
+     stacking/scroll context that traps children on some browsers.
+  3. noise-overlay z-index must be LOW — a z-index:9999 fixed element
+     intercepts scroll events on iOS Safari and mobile Chrome even
+     with pointer-events:none.
+*/
 html {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   scroll-behavior: smooth;
   -webkit-text-size-adjust: 100%;
-  height: auto;
-  overflow-y: auto;
+  height: auto !important;      /* override Tailwind base height:100% */
+  overflow-y: scroll;           /* always show scrollbar, prevents layout shift */
 }
 
 body {
@@ -82,9 +70,9 @@ body {
   font-family: var(--font-body);
   font-size: 16px;
   line-height: 1.6;
+  position: static !important;  /* never fixed/relative — breaks mobile scroll */
   min-height: 100vh;
   overflow-x: hidden;
-  overflow-y: auto;
 }
 
 /* ─── SELECTION ──────────────────────────────────────────────── */
@@ -109,14 +97,9 @@ body {
 .font-display { font-family: var(--font-display); }
 .font-mono    { font-family: var(--font-mono); }
 .font-body    { font-family: var(--font-body); }
+.font-mono, [class*="font-mono"] { font-variant-numeric: tabular-nums; }
 
-/* Tabular numerics for monospace readouts */
-.font-mono,
-[class*="font-mono"] {
-  font-variant-numeric: tabular-nums;
-}
-
-/* ─── COLOUR UTILITIES (Tailwind overrides) ──────────────────── */
+/* ─── COLOUR UTILITIES ───────────────────────────────────────── */
 .text-primary   { color: var(--text-primary);   }
 .text-secondary { color: var(--text-secondary); }
 .text-muted     { color: var(--text-muted);     }
@@ -125,13 +108,12 @@ body {
 .text-error     { color: var(--error);          }
 .text-info      { color: var(--info);           }
 .text-warning   { color: var(--warning);        }
-
 .bg-base        { background-color: var(--bg-base);     }
 .bg-surface     { background-color: var(--bg-surface);  }
 .bg-elevated    { background-color: var(--bg-elevated); }
 .border-forge   { border-color: var(--bg-border);       }
 
-/* ─── GRAIN TEXTURE (applied via JS on body) ─────────────────── */
+/* ─── NOISE OVERLAY ──────────────────────────────────────────── */
 .noise-overlay {
   position: fixed;
   inset: 0;
@@ -140,10 +122,10 @@ body {
   pointer-events: none;
   touch-action: none;
   user-select: none;
-  z-index: 50; /* lowered — never above interactive content */
+  z-index: 10;  /* MUST stay low — high z-index fixed elements eat scroll on iOS */
 }
 
-/* ─── FORGE GRID BACKGROUND ──────────────────────────────────── */
+/* ─── FORGE GRID ─────────────────────────────────────────────── */
 .forge-grid {
   position: absolute;
   inset: 0;
@@ -174,57 +156,39 @@ body {
     opacity var(--dur-slow) var(--ease-out),
     transform var(--dur-slow) var(--ease-out);
 }
-.reveal.visible {
-  opacity: 1;
-  transform: translateY(0);
-}
+.reveal.visible { opacity: 1; transform: translateY(0); }
 
-/* ─── MOTION SAFETY ──────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
-  .reveal,
-  .reveal.visible {
-    opacity: 1;
-    transform: none;
-  }
+  .reveal, .reveal.visible { opacity: 1; transform: none; }
 }
 
-/* ─── CURSOR BLINK (terminal) ────────────────────────────────── */
+/* ─── ANIMATIONS ─────────────────────────────────────────────── */
 @keyframes forge-blink {
   0%, 100% { opacity: 1; }
   50%       { opacity: 0; }
 }
 .forge-cursor {
   display: inline-block;
-  width: 8px;
-  height: 1em;
+  width: 8px; height: 1em;
   background: var(--accent);
   animation: forge-blink 1s step-end infinite;
   vertical-align: text-bottom;
   margin-left: 1px;
 }
-
-/* ─── PULSE ──────────────────────────────────────────────────── */
 @keyframes forge-pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
   50%       { opacity: 0.4; transform: scale(0.85); }
 }
-.forge-pulse {
-  animation: forge-pulse 2s ease-in-out infinite;
-}
-
-/* ─── SPIN ───────────────────────────────────────────────────── */
+.forge-pulse { animation: forge-pulse 2s ease-in-out infinite; }
 @keyframes forge-spin {
   to { transform: rotate(360deg); }
 }
-.forge-spin {
-  animation: forge-spin 0.8s linear infinite;
-}
+.forge-spin { animation: forge-spin 0.8s linear infinite; }
 
-/* ─── SAFE AREA INSETS (mobile) ──────────────────────────────── */
 .safe-top    { padding-top:    env(safe-area-inset-top);    }
 .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
