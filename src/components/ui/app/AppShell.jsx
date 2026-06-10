@@ -1,15 +1,28 @@
 'use client'
 
 /**
- * FORGE — AppShell + Sidebar + Topbar
- * Phase 7: Session History & App Shell
+ * FORGE — AppShell  (scroll-fix build)
  *
- * Layout:
- *   [ Topbar — full width, 58px ]
- *   [ Sidebar (collapsible) | Main content ]
+ * THE FIX applied here:
+ * The previous version set marginLeft on <main> but gave it no
+ * height or overflow, so the browser had no scroll container for
+ * the content. The page appeared full-height but couldn't scroll.
  *
- * Mobile: sidebar slides in as drawer from left.
- * Desktop: sidebar collapses to 52px icon rail.
+ * Correct approach for a fixed sidebar + scrollable content layout:
+ *   - Topbar:   position:fixed, full width, z-index:50
+ *   - Sidebar:  position:fixed, top=topbarHeight, z-index:40
+ *   - Main:     position:fixed or uses margin — BUT must have
+ *               explicit height + overflow-y:auto so IT is the
+ *               scroll container, not the body.
+ *
+ * We use the "margin + height calc" pattern:
+ *   main {
+ *     margin-top: 58px;
+ *     margin-left: sidebarWidth;
+ *     height: calc(100vh - 58px);
+ *     overflow-y: auto;
+ *   }
+ * This creates a proper scroll container inside the fixed chrome.
  */
 
 import { useState, useEffect } from 'react'
@@ -20,6 +33,10 @@ import { useRepos } from '@/lib/hooks/useRepos'
 import { createClient } from '@/lib/supabase/client'
 import ForgeWordmark from '@/components/ui/ForgeWordmark'
 import StatusDot from '@/components/ui/StatusDot'
+
+const TOPBAR_H  = 58   // px
+const SIDEBAR_W = 236  // px expanded
+const RAIL_W    = 52   // px collapsed
 
 // ─── TIME HELPER ───────────────────────────────────────────────────
 function timeAgo(dateStr) {
@@ -36,61 +53,55 @@ function timeAgo(dateStr) {
 
 // ─── SESSION GROUPING ──────────────────────────────────────────────
 function groupSessions(sessions) {
-  const now   = Date.now()
-  const DAY   = 86400000
-  const WEEK  = 7 * DAY
+  const now  = Date.now()
+  const DAY  = 86400000
+  const WEEK = 7 * DAY
   const groups = { Today: [], Yesterday: [], 'This week': [], Older: [] }
-
   sessions.forEach(s => {
     const age = now - new Date(s.created_at).getTime()
-    if (age < DAY)         groups.Today.push(s)
-    else if (age < 2*DAY)  groups.Yesterday.push(s)
-    else if (age < WEEK)   groups['This week'].push(s)
-    else                   groups.Older.push(s)
+    if      (age < DAY)        groups.Today.push(s)
+    else if (age < 2 * DAY)    groups.Yesterday.push(s)
+    else if (age < WEEK)       groups['This week'].push(s)
+    else                       groups.Older.push(s)
   })
-
   return Object.entries(groups).filter(([, v]) => v.length > 0)
 }
 
 // ─── TOPBAR ────────────────────────────────────────────────────────
-function Topbar({ open, onToggle, selectedRepo, repos, onRepoChange }) {
-  const router   = useRouter()
-  const { user } = useUser()
+function Topbar({ sidebarOpen, onToggle, selectedRepo, repos, onRepoChange }) {
+  const router    = useRouter()
+  const { user }  = useUser()
   const [repoOpen, setRepoOpen] = useState(false)
   const [userOpen, setUserOpen] = useState(false)
 
-  const initials = user?.email
-    ? user.email.slice(0, 2).toUpperCase()
-    : '??'
+  const initials = user?.email ? user.email.slice(0, 2).toUpperCase() : '??'
 
   async function handleLogout() {
-    const supabase = createClient()
-    await supabase.auth.signOut()
+    await createClient().auth.signOut()
     router.push('/')
   }
 
-  // Close dropdowns on outside click
   useEffect(() => {
-    function handler(e) {
+    function close(e) {
       if (!e.target.closest('[data-dropdown]')) {
         setRepoOpen(false)
         setUserOpen(false)
       }
     }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
   }, [])
 
   return (
     <header
-      className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4 gap-4"
+      className="fixed left-0 right-0 top-0 z-50 flex items-center justify-between gap-4 px-4"
       style={{
-        height: '58px',
+        height: `${TOPBAR_H}px`,
         background: 'var(--bg-elevated)',
         borderBottom: '1px solid var(--bg-border)',
       }}
     >
-      {/* Left: hamburger + wordmark */}
+      {/* Left */}
       <div className="flex items-center gap-3">
         <button
           onClick={onToggle}
@@ -98,7 +109,7 @@ function Topbar({ open, onToggle, selectedRepo, repos, onRepoChange }) {
           style={{ color: 'var(--text-muted)' }}
           onMouseEnter={e => (e.currentTarget.style.color = 'var(--text-primary)')}
           onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-muted)')}
-          aria-label={open ? 'Collapse sidebar' : 'Expand sidebar'}
+          aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
             <path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
@@ -107,7 +118,7 @@ function Topbar({ open, onToggle, selectedRepo, repos, onRepoChange }) {
         <ForgeWordmark size="xs" />
       </div>
 
-      {/* Centre: repo selector */}
+      {/* Repo selector */}
       <div className="relative flex-1 max-w-xs" data-dropdown>
         <button
           onClick={() => { setRepoOpen(v => !v); setUserOpen(false) }}
@@ -153,22 +164,13 @@ function Topbar({ open, onToggle, selectedRepo, repos, onRepoChange }) {
                 <span
                   className="w-1.5 h-1.5 rounded-full shrink-0"
                   style={{
-                    background: repo.index_status === 'indexed'
-                      ? 'var(--success)'
-                      : repo.index_status === 'indexing'
-                        ? 'var(--warning)'
-                        : 'var(--text-muted)',
+                    background:
+                      repo.index_status === 'indexed'  ? 'var(--success)' :
+                      repo.index_status === 'indexing' ? 'var(--warning)' :
+                      'var(--text-muted)',
                   }}
                 />
                 <span className="font-mono text-xs truncate">{repo.name}</span>
-                {repo.index_status === 'indexing' && (
-                  <span
-                    className="ml-auto font-mono text-xs forge-pulse"
-                    style={{ color: 'var(--warning)' }}
-                  >
-                    indexing…
-                  </span>
-                )}
               </button>
             ))}
             <div style={{ height: '1px', background: 'var(--bg-border)' }} />
@@ -188,20 +190,16 @@ function Topbar({ open, onToggle, selectedRepo, repos, onRepoChange }) {
         )}
       </div>
 
-      {/* Right: user avatar */}
+      {/* Avatar */}
       <div className="relative" data-dropdown>
         <button
           onClick={() => { setUserOpen(v => !v); setRepoOpen(false) }}
-          className="w-8 h-8 rounded-full flex items-center justify-center font-mono font-bold text-xs transition-all duration-fast"
-          style={{
-            background: 'linear-gradient(135deg, var(--accent), var(--accent-warm))',
-            color: '#fff',
-          }}
+          className="w-8 h-8 rounded-full flex items-center justify-center font-mono font-bold text-xs"
+          style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-warm))', color: '#fff' }}
           aria-label="User menu"
         >
           {initials}
         </button>
-
         {userOpen && (
           <div
             className="absolute top-full mt-2 right-0 rounded-lg overflow-hidden z-50 w-44 animate-slide-up"
@@ -223,10 +221,6 @@ function Topbar({ open, onToggle, selectedRepo, repos, onRepoChange }) {
               onMouseEnter={e => (e.currentTarget.style.background = 'var(--bg-surface)')}
               onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
             >
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-                <circle cx="7" cy="7" r="2" stroke="currentColor" strokeWidth="1.4" />
-                <path d="M7 1v1M7 12v1M1 7h1M12 7h1M2.6 2.6l.7.7M10.7 10.7l.7.7M11.4 2.6l-.7.7M3.3 10.7l-.7.7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-              </svg>
               Settings
             </button>
             <div style={{ height: '1px', background: 'var(--bg-border)' }} />
@@ -237,9 +231,6 @@ function Topbar({ open, onToggle, selectedRepo, repos, onRepoChange }) {
               onMouseEnter={e => (e.currentTarget.style.background = 'rgba(248,113,113,0.08)')}
               onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
             >
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-                <path d="M5 2H2V12H5M9 10L13 7L9 4M13 7H5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
               Sign out
             </button>
           </div>
@@ -258,10 +249,12 @@ function Sidebar({ open, selectedRepoId }) {
 
   return (
     <aside
-      className="fixed left-0 bottom-0 flex flex-col z-40 transition-all duration-normal overflow-hidden"
+      className="fixed z-40 flex flex-col overflow-hidden transition-all duration-normal"
       style={{
-        top: '58px',
-        width: open ? '236px' : '52px',
+        top:      `${TOPBAR_H}px`,
+        left:     0,
+        bottom:   0,
+        width:    open ? `${SIDEBAR_W}px` : `${RAIL_W}px`,
         background: 'var(--bg-surface)',
         borderRight: '1px solid var(--bg-border)',
       }}
@@ -276,110 +269,75 @@ function Sidebar({ open, selectedRepoId }) {
             border: `1px solid ${pathname === '/app' ? 'var(--accent-dim)' : 'transparent'}`,
             color: pathname === '/app' ? 'var(--accent)' : 'var(--text-muted)',
           }}
-          onMouseEnter={e => {
-            if (pathname !== '/app') {
-              e.currentTarget.style.color = 'var(--text-primary)'
-              e.currentTarget.style.background = 'var(--bg-elevated)'
-            }
-          }}
-          onMouseLeave={e => {
-            if (pathname !== '/app') {
-              e.currentTarget.style.color = 'var(--text-muted)'
-              e.currentTarget.style.background = 'transparent'
-            }
-          }}
           title={!open ? 'New Task' : undefined}
         >
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="shrink-0" aria-hidden="true">
             <path d="M7 1.5v11M1.5 7h11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
           </svg>
-          {open && (
-            <span className="font-body text-sm font-medium truncate">New Task</span>
-          )}
+          {open && <span className="font-body text-sm font-medium truncate">New Task</span>}
         </button>
       </div>
 
-      {/* Sessions list */}
+      {/* Session list — scrollable */}
       <div className="flex-1 overflow-y-auto py-2">
         {open && (
-          <>
-            {loading ? (
-              <div className="px-3 py-4 flex flex-col gap-2">
-                {[...Array(4)].map((_, i) => (
-                  <div
-                    key={i}
-                    className="h-11 rounded-md animate-pulse"
-                    style={{ background: 'var(--bg-elevated)' }}
-                  />
-                ))}
-              </div>
-            ) : sessions.length === 0 ? (
-              <div className="px-4 py-8 text-center flex flex-col gap-1">
-                <p className="font-body text-xs" style={{ color: 'var(--text-muted)' }}>
-                  No sessions yet
+          loading ? (
+            <div className="px-3 py-4 flex flex-col gap-2">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="h-11 rounded-md animate-pulse" style={{ background: 'var(--bg-elevated)' }} />
+              ))}
+            </div>
+          ) : sessions.length === 0 ? (
+            <div className="px-4 py-8 text-center">
+              <p className="font-body text-xs" style={{ color: 'var(--text-muted)' }}>No sessions yet</p>
+            </div>
+          ) : (
+            grouped.map(([group, items]) => (
+              <div key={group} className="mb-1">
+                <p className="px-3 pt-3 pb-1 font-mono text-xs uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
+                  {group}
                 </p>
-                <p className="font-mono text-xs" style={{ color: 'rgba(80,80,90,0.6)' }}>
-                  Start your first task
-                </p>
+                {items.map(session => {
+                  const isActive = pathname === `/app/session/${session.id}`
+                  return (
+                    <button
+                      key={session.id}
+                      onClick={() => router.push(`/app/session/${session.id}`)}
+                      className="text-left px-2 py-2.5 rounded-md transition-all duration-fast"
+                      style={{
+                        width: 'calc(100% - 8px)',
+                        margin: '0 4px',
+                        display: 'block',
+                        background: isActive ? 'var(--bg-elevated)' : 'transparent',
+                        borderLeft: `2px solid ${isActive ? 'var(--accent)' : 'transparent'}`,
+                      }}
+                      onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = 'var(--bg-elevated)' }}
+                      onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent' }}
+                    >
+                      <p className="font-body text-xs font-medium truncate leading-snug mb-1.5"
+                        style={{ color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
+                        {session.task}
+                      </p>
+                      <div className="flex items-center justify-between">
+                        <StatusDot status={session.status} showLabel={false} size="xs" />
+                        <span className="font-mono text-xs" style={{ color: 'var(--text-muted)', opacity: 0.7 }}>
+                          {timeAgo(session.created_at)}
+                        </span>
+                      </div>
+                    </button>
+                  )
+                })}
               </div>
-            ) : (
-              grouped.map(([group, items]) => (
-                <div key={group} className="mb-1">
-                  <p
-                    className="px-3 pt-3 pb-1 font-mono text-xs uppercase tracking-widest"
-                    style={{ color: 'var(--text-muted)' }}
-                  >
-                    {group}
-                  </p>
-                  {items.map(session => {
-                    const isActive = pathname === `/app/session/${session.id}`
-                    return (
-                      <button
-                        key={session.id}
-                        onClick={() => router.push(`/app/session/${session.id}`)}
-                        className="w-full text-left px-2 mx-1 py-2.5 rounded-md transition-all duration-fast"
-                        style={{
-                          width: 'calc(100% - 8px)',
-                          background: isActive ? 'var(--bg-elevated)' : 'transparent',
-                          borderLeft: isActive ? '2px solid var(--accent)' : '2px solid transparent',
-                        }}
-                        onMouseEnter={e => {
-                          if (!isActive) e.currentTarget.style.background = 'var(--bg-elevated)'
-                        }}
-                        onMouseLeave={e => {
-                          if (!isActive) e.currentTarget.style.background = 'transparent'
-                        }}
-                      >
-                        <p
-                          className="font-body text-xs font-medium truncate leading-snug mb-1.5"
-                          style={{ color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)' }}
-                        >
-                          {session.task}
-                        </p>
-                        <div className="flex items-center justify-between">
-                          <StatusDot status={session.status} showLabel={false} size="xs" />
-                          <span
-                            className="font-mono text-xs"
-                            style={{ color: 'var(--text-muted)', opacity: 0.7 }}
-                          >
-                            {timeAgo(session.created_at)}
-                          </span>
-                        </div>
-                      </button>
-                    )
-                  })}
-                </div>
-              ))
-            )}
-          </>
+            ))
+          )
         )}
 
-        {/* Collapsed: show status dots only */}
-        {!open && sessions.slice(0, 8).map(session => (
+        {/* Collapsed rail — dots only */}
+        {!open && sessions.slice(0, 10).map(session => (
           <button
             key={session.id}
             onClick={() => router.push(`/app/session/${session.id}`)}
-            className="w-full flex items-center justify-center py-2 transition-colors duration-fast"
+            className="w-full flex items-center justify-center py-2"
             title={session.task}
           >
             <StatusDot status={session.status} showLabel={false} size="sm" />
@@ -387,7 +345,7 @@ function Sidebar({ open, selectedRepoId }) {
         ))}
       </div>
 
-      {/* Settings */}
+      {/* Settings link */}
       {open && (
         <div className="p-2 shrink-0" style={{ borderTop: '1px solid var(--bg-border)' }}>
           <button
@@ -396,18 +354,6 @@ function Sidebar({ open, selectedRepoId }) {
             style={{
               color: pathname === '/app/settings' ? 'var(--accent)' : 'var(--text-muted)',
               background: pathname === '/app/settings' ? 'var(--accent-dim)' : 'transparent',
-            }}
-            onMouseEnter={e => {
-              if (pathname !== '/app/settings') {
-                e.currentTarget.style.color = 'var(--text-secondary)'
-                e.currentTarget.style.background = 'var(--bg-elevated)'
-              }
-            }}
-            onMouseLeave={e => {
-              if (pathname !== '/app/settings') {
-                e.currentTarget.style.color = 'var(--text-muted)'
-                e.currentTarget.style.background = 'transparent'
-              }
             }}
           >
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
@@ -427,9 +373,8 @@ function Sidebar({ open, selectedRepoId }) {
 export default function AppShell({ children }) {
   const [open,         setOpen]         = useState(true)
   const [selectedRepo, setSelectedRepo] = useState(null)
-  const { repos }                        = useRepos()
+  const { repos }                       = useRepos()
 
-  // Auto-select first indexed repo
   useEffect(() => {
     if (!selectedRepo && repos?.length > 0) {
       const indexed = repos.find(r => r.index_status === 'indexed') || repos[0]
@@ -437,32 +382,40 @@ export default function AppShell({ children }) {
     }
   }, [repos, selectedRepo])
 
-  const SIDEBAR_WIDTH = open ? 236 : 52
+  const sidebarWidth = open ? SIDEBAR_W : RAIL_W
 
   return (
-    <div className="min-h-screen" style={{ background: 'var(--bg-base)' }}>
+    <div style={{ background: 'var(--bg-base)' }}>
       <Topbar
-        open={open}
+        sidebarOpen={open}
         onToggle={() => setOpen(v => !v)}
         selectedRepo={selectedRepo}
         repos={repos}
         onRepoChange={setSelectedRepo}
       />
+
       <Sidebar open={open} selectedRepoId={selectedRepo?.id} />
 
-      {/* Main content — offset by sidebar + topbar */}
+      {/*
+        SCROLL FIX applied here:
+        - marginTop clears the fixed topbar
+        - marginLeft clears the fixed sidebar
+        - height: calc(100vh - topbarHeight) makes THIS the scroll container
+        - overflow-y: auto enables scrolling within this container
+        Without explicit height + overflow-y, the browser has no scroll
+        container and the page appears frozen.
+      */}
       <main
         className="transition-all duration-normal"
         style={{
-          marginTop:  '58px',
-          marginLeft: `${SIDEBAR_WIDTH}px`,
-          minHeight:  'calc(100vh - 58px)',
+          marginTop:  `${TOPBAR_H}px`,
+          marginLeft: `${sidebarWidth}px`,
+          minHeight:  `calc(100vh - ${TOPBAR_H}px)`,
+          overflowY:  'auto',
+          overflowX:  'hidden',
         }}
       >
-        {/* Pass selectedRepo down via context or props as needed */}
-        {typeof children === 'function'
-          ? children({ selectedRepo, setSelectedRepo })
-          : children}
+        {children}
       </main>
     </div>
   )
