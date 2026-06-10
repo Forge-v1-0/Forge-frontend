@@ -21,7 +21,6 @@ export default function NewTaskPage() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
 
-  // Poll indexing status while repo is indexing
   useEffect(() => {
     if (!selectedRepo || selectedRepo.index_status === 'indexed') return
     if (selectedRepo.index_status === 'failed') return
@@ -46,21 +45,19 @@ export default function NewTaskPage() {
 
   const indexing = selectedRepo?.index_status === 'indexing' || selectedRepo?.index_status === 'pending'
   const indexFailed = selectedRepo?.index_status === 'failed'
-
   const taskDisabled = !selectedRepo || indexing || indexFailed
   const disabledReason = !selectedRepo
     ? 'Select a repository to continue'
     : indexFailed
     ? 'Indexing failed. Please re-add the repository.'
     : indexing
-    ? `Indexing repository… this takes a minute`
+    ? 'Indexing repository… this takes a minute'
     : null
 
   async function handleSubmit() {
     if (!selectedRepo || !task.trim()) return
     setError(null)
     setSubmitting(true)
-
     try {
       const data = await apiFetch('/agent/start', {
         method: 'POST',
@@ -71,7 +68,6 @@ export default function NewTaskPage() {
           coder_model: coderModel,
         }),
       })
-
       router.push(`/app/session/${data.session_id}`)
     } catch (err) {
       setError(err.message)
@@ -80,8 +76,7 @@ export default function NewTaskPage() {
   }
 
   return (
-    <div className="min-h-screen bg-base flex flex-col">
-      {/* Header */}
+    <div className="bg-base flex flex-col">
       <div className="px-6 py-5 border-b border-border">
         <h1 className="text-base font-semibold text-secondary">New Task</h1>
         <p className="text-xs text-muted mt-0.5">
@@ -89,13 +84,8 @@ export default function NewTaskPage() {
         </p>
       </div>
 
-      {/* Content */}
       <div className="flex-1 px-6 py-6 flex flex-col gap-6 max-w-2xl w-full">
-        <RepoSelector
-          value={selectedRepo}
-          onChange={setSelectedRepo}
-        />
-
+        <RepoSelector value={selectedRepo} onChange={setSelectedRepo} />
         <ModelSelector
           plannerModel={plannerModel}
           coderModel={coderModel}
@@ -103,19 +93,20 @@ export default function NewTaskPage() {
           onCoderChange={setCoderModel}
         />
 
+        {disabledReason && (
+          <p className="text-xs text-muted italic">{disabledReason}</p>
+        )}
+
         <TaskInput
           value={task}
           onChange={setTask}
           onSubmit={handleSubmit}
+          disabled={taskDisabled || submitting}
           loading={submitting}
-          disabled={taskDisabled}
-          disabledReason={disabledReason}
         />
 
         {error && (
-          <div className="px-3 py-2 bg-danger/10 border border-danger/20 rounded">
-            <p className="text-xs text-danger">{error}</p>
-          </div>
+          <p className="text-sm text-error">{error}</p>
         )}
       </div>
     </div>
