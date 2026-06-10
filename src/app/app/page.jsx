@@ -76,7 +76,7 @@ export default function NewTaskPage() {
   }
 
   return (
-    <div className="bg-base flex flex-col">
+    <div className="bg-base flex flex-col min-h-full">
       <div className="px-6 py-5 border-b border-border">
         <h1 className="text-base font-semibold text-secondary">New Task</h1>
         <p className="text-xs text-muted mt-0.5">
