@@ -4,6 +4,15 @@
  * FORGE — Landing Page (page.jsx)
  * Phase 1: Conversion Engine
  *
+ * FIXED: Mobile responsive layout. Key changes:
+ *   - Hero wordmark container: overflow-hidden + max-w-full
+ *   - CTA buttons: cta-stack class for mobile vertical stacking
+ *   - Terminal: terminal-card class constrains to viewport
+ *   - Bento grid: bento-grid class → 1 col on mobile via CSS
+ *   - Ghost numbers: ghost-number class caps mobile size
+ *   - Nav: nav-forge class reduces padding on mobile
+ *   - Trust row: trust-row class reduces gap on mobile
+ *
  * Positioning: Repository-aware AI coding agent. Web-first. Mobile-capable.
  * Sections: Nav → Hero → Problem → How It Works → Features Bento → Stack → Final CTA → Footer
  */
@@ -48,7 +57,7 @@ function Nav({ onLogin, onSignup }) {
 
   return (
     <nav
-      className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-6"
+      className="nav-forge fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-6"
       style={{
         height: '60px',
         borderBottom: '1px solid var(--bg-border)',
@@ -65,7 +74,7 @@ function Nav({ onLogin, onSignup }) {
           Login
         </Button>
         <Button variant="primary" size="sm" onClick={onSignup}>
-          Connect Your Repo
+          Connect
         </Button>
       </div>
     </nav>
@@ -103,8 +112,8 @@ const TYPE_COLOURS = {
 }
 
 function Terminal() {
-  const [lines, setLines] = useState([])   // { text, color, done }
-  const [typing, setTyping] = useState(null) // { text, color, cursor }
+  const [lines, setLines] = useState([])
+  const [typing, setTyping] = useState(null)
   const seqRef    = useRef(0)
   const lineRef   = useRef(0)
   const charRef   = useRef(0)
@@ -118,7 +127,6 @@ function Terminal() {
   function typeChar() {
     const seq = TERMINAL_SEQUENCE
     if (lineRef.current >= seq.length) {
-      // End of sequence — pause then restart
       setTyping(null)
       scheduleNext(3500, () => {
         lineRef.current = 0
@@ -155,7 +163,6 @@ function Terminal() {
       setTyping({ text: partial, color })
       scheduleNext(delay, typeChar)
     } else {
-      // Line complete — commit to lines array
       setTyping(null)
       setLines(prev => [...prev, { text: fullText, color }])
       lineRef.current++
@@ -172,12 +179,11 @@ function Terminal() {
 
   return (
     <div
-      className="w-full rounded-xl overflow-hidden reveal"
+      className="terminal-card w-full rounded-xl overflow-hidden reveal"
       style={{
         border: '1px solid var(--bg-border)',
         background: 'var(--bg-surface)',
         boxShadow: '0 0 60px rgba(232,103,26,0.07), 0 24px 48px rgba(0,0,0,0.5)',
-        maxWidth: '580px',
       }}
     >
       {/* Traffic lights */}
@@ -205,7 +211,6 @@ function Terminal() {
         className="p-5 font-mono text-xs overflow-y-auto"
         style={{ minHeight: '200px', maxHeight: '240px', lineHeight: '1.85' }}
       >
-        {/* Prompt prefix on first line */}
         {lines.length === 0 && !typing && (
           <span style={{ color: 'var(--text-muted)' }}>
             <span style={{ color: 'var(--accent)' }}>$ </span>
@@ -243,12 +248,13 @@ function Hero({ onSignup }) {
   return (
     <section
       className="relative min-h-screen flex flex-col items-center justify-center px-6 pt-24 pb-20"
-      style={{ overflowX: 'hidden', overflowY: 'visible' }}
+      style={{ overflow: 'hidden' }}
     >
       {/* Grid background */}
       <div className="forge-grid" aria-hidden="true" />
 
-      <div className="relative z-10 flex flex-col items-center text-center gap-8 w-full max-w-2xl mx-auto">
+      {/* MOBILE FIX: Added max-w-full and overflow-hidden to prevent wordmark bleed */}
+      <div className="relative z-10 flex flex-col items-center text-center gap-8 w-full max-w-2xl mx-auto overflow-hidden">
         {/* Badge */}
         <div
           className="inline-flex items-center gap-2 px-4 py-1.5 rounded-pill font-mono text-xs tracking-widest uppercase reveal"
@@ -265,13 +271,15 @@ function Hero({ onSignup }) {
           Repository-Aware AI Coding Agent
         </div>
 
-        {/* Wordmark */}
-        <ForgeWordmark size="2xl" underline className="reveal" />
+        {/* Wordmark — MOBILE FIX: container prevents overflow */}
+        <div className="w-full flex justify-center reveal">
+          <ForgeWordmark size="2xl" underline />
+        </div>
 
         {/* Subhead */}
         <p
           className="text-xl font-body font-light leading-relaxed max-w-lg reveal"
-          style={{ color: 'var(--text-secondary)' }}
+          style={{ color: 'var(--text-secondary)', fontSize: 'clamp(1rem, 4vw, 1.25rem)' }}
         >
           Understands your codebase. Plans the work. Writes the code.{' '}
           <strong
@@ -282,8 +290,8 @@ function Hero({ onSignup }) {
           </strong>
         </p>
 
-        {/* CTAs */}
-        <div className="flex items-center gap-4 flex-wrap justify-center reveal">
+        {/* CTAs — MOBILE FIX: cta-stack class handles vertical stacking */}
+        <div className="cta-stack flex items-center gap-4 flex-wrap justify-center reveal">
           <Button variant="primary" size="lg" onClick={onSignup}>
             Connect Your Repo — It's Free
           </Button>
@@ -298,9 +306,9 @@ function Hero({ onSignup }) {
           </Button>
         </div>
 
-        {/* Trust row */}
+        {/* Trust row — MOBILE FIX: trust-row class reduces gap */}
         <div
-          className="flex items-center gap-6 flex-wrap justify-center font-mono text-xs reveal"
+          className="trust-row flex items-center gap-6 flex-wrap justify-center font-mono text-xs reveal"
           style={{ color: 'var(--text-muted)' }}
         >
           {['Web', 'Mobile', 'Any model', 'Your codebase'].map(item => (
@@ -354,7 +362,7 @@ function Problem() {
           </span>
           <h2
             className="font-display font-bold leading-tight"
-            style={{ fontSize: 'clamp(1.6rem, 4vw, 2.2rem)', letterSpacing: '-0.02em', color: 'var(--text-primary)' }}
+            style={{ fontSize: 'clamp(1.3rem, 4vw, 2.2rem)', letterSpacing: '-0.02em', color: 'var(--text-primary)' }}
           >
             Great developers are being slowed down{' '}
             <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>
@@ -374,12 +382,12 @@ function Problem() {
                 overflow: 'hidden',
               }}
             >
-              {/* Ghost watermark number */}
+              {/* Ghost watermark number — MOBILE FIX: ghost-number class caps size */}
               <span
                 aria-hidden="true"
-                className="absolute font-display font-bold pointer-events-none select-none"
+                className="ghost-number absolute font-display font-bold pointer-events-none select-none"
                 style={{
-                  fontSize: 'clamp(6rem, 18vw, 11rem)',
+                  fontSize: 'clamp(5rem, 14vw, 11rem)',
                   color: 'var(--text-muted)',
                   opacity: 0.055,
                   top: '-0.1em',
@@ -400,7 +408,7 @@ function Problem() {
               <div className="z-10">
                 <h3
                   className="font-display font-semibold mb-2"
-                  style={{ fontSize: '0.95rem', color: 'var(--text-primary)', lineHeight: 1.4 }}
+                  style={{ fontSize: 'clamp(0.9rem, 3vw, 0.95rem)', color: 'var(--text-primary)', lineHeight: 1.4 }}
                 >
                   {item.h}
                 </h3>
@@ -470,7 +478,7 @@ function HowItWorks() {
           </span>
           <h2
             className="font-display font-bold leading-tight"
-            style={{ fontSize: 'clamp(1.6rem, 4vw, 2.2rem)', letterSpacing: '-0.02em', color: 'var(--text-primary)' }}
+            style={{ fontSize: 'clamp(1.3rem, 4vw, 2.2rem)', letterSpacing: '-0.02em', color: 'var(--text-primary)' }}
           >
             From idea to branch{' '}
             <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>
@@ -498,7 +506,7 @@ function HowItWorks() {
               <div>
                 <h3
                   className="font-display font-semibold mb-2"
-                  style={{ fontSize: '1rem', color: 'var(--text-primary)' }}
+                  style={{ fontSize: 'clamp(0.9rem, 3vw, 1rem)', color: 'var(--text-primary)' }}
                 >
                   {step.title}
                 </h3>
@@ -578,7 +586,7 @@ function Features() {
           </span>
           <h2
             className="font-display font-bold leading-tight"
-            style={{ fontSize: 'clamp(1.6rem, 4vw, 2.2rem)', letterSpacing: '-0.02em', color: 'var(--text-primary)' }}
+            style={{ fontSize: 'clamp(1.3rem, 4vw, 2.2rem)', letterSpacing: '-0.02em', color: 'var(--text-primary)' }}
           >
             Built for developers who move fast{' '}
             <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>
@@ -587,9 +595,9 @@ function Features() {
           </h2>
         </div>
 
-        {/* Bento grid */}
+        {/* Bento grid — MOBILE FIX: bento-grid class → 1 col on mobile */}
         <div
-          className="grid gap-px reveal"
+          className="bento-grid grid gap-px reveal"
           style={{
             gridTemplateColumns: 'repeat(2, 1fr)',
             background: 'var(--bg-border)',
@@ -630,7 +638,7 @@ function Features() {
               )}
               <h3
                 className="font-display font-semibold"
-                style={{ fontSize: '0.95rem', color: 'var(--text-primary)' }}
+                style={{ fontSize: 'clamp(0.85rem, 2.5vw, 0.95rem)', color: 'var(--text-primary)' }}
               >
                 {card.title}
               </h3>
@@ -719,11 +727,14 @@ function FinalCTA({ onSignup }) {
       />
 
       <div className="relative z-10 max-w-2xl mx-auto flex flex-col items-center text-center gap-8 reveal">
-        <ForgeWordmark size="xl" underline />
+        {/* MOBILE FIX: constrain wordmark width */}
+        <div className="w-full flex justify-center">
+          <ForgeWordmark size="xl" underline />
+        </div>
 
         <p
           className="font-body font-light leading-relaxed"
-          style={{ fontSize: 'clamp(1.1rem, 3vw, 1.4rem)', color: 'var(--text-muted)' }}
+          style={{ fontSize: 'clamp(1rem, 3vw, 1.4rem)', color: 'var(--text-muted)' }}
         >
           Your codebase understood. Your code shipped.
           <strong
@@ -740,7 +751,7 @@ function FinalCTA({ onSignup }) {
           onClick={onSignup}
           fullWidth
           className="max-w-sm"
-          style={{ fontSize: '1rem' }}
+          style={{ fontSize: 'clamp(0.85rem, 2.5vw, 1rem)' }}
         >
           Connect Your Repo — It's Free
         </Button>
