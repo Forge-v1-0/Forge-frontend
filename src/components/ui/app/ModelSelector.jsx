@@ -4,16 +4,29 @@ import { useState } from 'react'
 
 const SUGGESTED_MODELS = {
   planner: [
-    { id: 'anthropic/claude-3.5-sonnet', label: 'Claude 3.5 Sonnet' },
-    { id: 'anthropic/claude-3-opus', label: 'Claude 3 Opus' },
-    { id: 'openai/gpt-4o', label: 'GPT-4o' },
-    { id: 'google/gemini-pro-1.5', label: 'Gemini Pro 1.5' },
+    { id: 'openai/gpt-oss-120b:free', label: 'GPT-OSS 120B (Free)' },
+    { id: 'nvidia/nemotron-3-super-120b-a12b:free', label: 'Nemotron Super 120B (Free)' },
+    { id: 'qwen/qwen3-next-80b-a3b-instruct:free', label: 'Qwen3 Next 80B (Free)' },
+    { id: 'nousresearch/hermes-3-llama-3.1-405b:free', label: 'Hermes 3 405B (Free)' },
+    { id: 'moonshotai/kimi-k2.6:free', label: 'Kimi K2.6 (Free)' },
+    { id: 'meta-llama/llama-3.3-70b-instruct:free', label: 'Llama 3.3 70B (Free)' },
+    { id: 'z-ai/glm-4.5-air:free', label: 'GLM-4.5 Air (Free)' },
+    { id: 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free', label: 'Nemotron Nano Omni 30B Reasoning (Free)' },
+    { id: 'liquid/lfm-2.5-1.2b-thinking:free', label: 'LFM 2.5 1.2B Thinking (Free)' },
   ],
   coder: [
+    { id: 'qwen/qwen3-coder:free', label: 'Qwen3 Coder (Free)' },
     { id: 'poolside/laguna-m.1:free', label: 'Laguna M.1 (Free)' },
-    { id: 'deepseek/deepseek-coder', label: 'DeepSeek Coder' },
-    { id: 'qwen/qwen-2.5-coder-32b-instruct', label: 'Qwen 2.5 Coder' },
-    { id: 'anthropic/claude-3.5-sonnet', label: 'Claude 3.5 Sonnet' },
+    { id: 'poolside/laguna-xs.2:free', label: 'Laguna XS.2 (Free)' },
+    { id: 'openai/gpt-oss-20b:free', label: 'GPT-OSS 20B (Free)' },
+    { id: 'cognitivecomputations/dolphin-mistral-24b-venice-edition:free', label: 'Dolphin Mistral 24B Venice (Free)' },
+    { id: 'google/gemma-4-31b-it:free', label: 'Gemma 4 31B (Free)' },
+    { id: 'google/gemma-4-26b-a4b-it:free', label: 'Gemma 4 26B (Free)' },
+    { id: 'nvidia/nemotron-3-nano-30b-a3b:free', label: 'Nemotron Nano 30B (Free)' },
+    { id: 'nvidia/nemotron-nano-12b-v2-vl:free', label: 'Nemotron Nano 12B VL (Free)' },
+    { id: 'nvidia/nemotron-nano-9b-v2:free', label: 'Nemotron Nano 9B (Free)' },
+    { id: 'liquid/lfm-2.5-1.2b-instruct:free', label: 'LFM 2.5 1.2B Instruct (Free)' },
+    { id: 'meta-llama/llama-3.2-3b-instruct:free', label: 'Llama 3.2 3B (Free)' },
   ],
 }
 
