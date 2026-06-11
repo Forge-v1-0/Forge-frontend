@@ -1,462 +1,806 @@
 'use client'
-import { useState } from 'react'
+
+/**
+ * FORGE — Landing Page (page.jsx)
+ * Phase 1: Conversion Engine
+ *
+ * FIXED: Mobile responsive layout. Key changes:
+ *   - Hero wordmark container: overflow-hidden + max-w-full
+ *   - CTA buttons: cta-stack class for mobile vertical stacking
+ *   - Terminal: terminal-card class constrains to viewport
+ *   - Bento grid: bento-grid class → 1 col on mobile via CSS
+ *   - Ghost numbers: ghost-number class caps mobile size
+ *   - Nav: nav-forge class reduces padding on mobile
+ *   - Trust row: trust-row class reduces gap on mobile
+ *
+ * Positioning: Repository-aware AI coding agent. Web-first. Mobile-capable.
+ * Sections: Nav → Hero → Problem → How It Works → Features Bento → Stack → Final CTA → Footer
+ */
+
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import ForgeWordmark from '@/components/ui/ForgeWordmark'
 import Button from '@/components/ui/Button'
 
-// ─── FORGE WORDMARK ───────────────────────────────────────────────
-function ForgeWordmark({ size = 'lg' }) {
-  const sizes = {
-    sm: 'text-2xl tracking-[0.15em]',
-    lg: 'text-5xl tracking-[0.2em]',
-    xl: 'text-7xl tracking-[0.25em]',
-  }
-
-  return (
-    <div className={`font-mono font-semibold ${sizes[size]} relative inline-block select-none`}>
-      <span className="text-secondary">F</span>
-      <span className="text-accent">O</span>
-      <span className="text-secondary">R</span>
-      <span className="text-secondary">G</span>
-      <span className="text-accent">E</span>
-      <span
-        className="absolute -bottom-1 left-0 w-full h-px"
-        style={{
-          background: 'linear-gradient(90deg, transparent, #2563EB, transparent)',
-        }}
-      />
-    </div>
-  )
-}
-
-// ─── GRID BACKGROUND ──────────────────────────────────────────────
-function GridBackground() {
-  return (
-    <div className="fixed inset-0 pointer-events-none overflow-hidden">
-      <div
-        className="absolute inset-0 opacity-[0.03]"
-        style={{
-          backgroundImage: `
-            linear-gradient(#2563EB 1px, transparent 1px),
-            linear-gradient(90deg, #2563EB 1px, transparent 1px)
-          `,
-          backgroundSize: '48px 48px',
-        }}
-      />
-      <div
-        className="absolute inset-0"
-        style={{
-          background: 'radial-gradient(ellipse 80% 60% at 50% 0%, #2563eb08 0%, transparent 70%)',
-        }}
-      />
-    </div>
-  )
+// ─── SCROLL REVEAL HOOK ────────────────────────────────────────────
+function useReveal() {
+  useEffect(() => {
+    const els = document.querySelectorAll('.reveal')
+    const io = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry, i) => {
+          if (entry.isIntersecting) {
+            setTimeout(
+              () => entry.target.classList.add('visible'),
+              (i % 6) * 60
+            )
+            io.unobserve(entry.target)
+          }
+        })
+      },
+      { threshold: 0.07, rootMargin: '0px 0px -32px 0px' }
+    )
+    els.forEach(el => io.observe(el))
+    return () => io.disconnect()
+  }, [])
 }
 
 // ─── NAV ──────────────────────────────────────────────────────────
 function Nav({ onLogin, onSignup }) {
+  const [scrolled, setScrolled] = useState(false)
+
+  useEffect(() => {
+    const handler = () => setScrolled(window.scrollY > 40)
+    window.addEventListener('scroll', handler, { passive: true })
+    return () => window.removeEventListener('scroll', handler)
+  }, [])
+
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-6 py-4 border-b border-border/50 backdrop-blur-sm bg-base/80">
+    <nav
+      className="nav-forge fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-6"
+      style={{
+        height: '60px',
+        borderBottom: '1px solid var(--bg-border)',
+        background: scrolled
+          ? 'rgba(10,10,11,0.88)'
+          : 'rgba(10,10,11,0.5)',
+        backdropFilter: 'blur(14px)',
+        transition: 'background 250ms ease',
+      }}
+    >
       <ForgeWordmark size="sm" />
       <div className="flex items-center gap-3">
         <Button variant="ghost" size="sm" onClick={onLogin}>
           Login
         </Button>
         <Button variant="primary" size="sm" onClick={onSignup}>
-          Get Started
+          Connect
         </Button>
       </div>
     </nav>
   )
 }
 
-// ─── HERO ─────────────────────────────────────────────────────────
-function Hero({ onSignup, onLogin }) {
+// ─── TERMINAL ANIMATION ────────────────────────────────────────────
+const TERMINAL_SEQUENCE = [
+  { type: 'cmd',     text: 'forge run "Add rate limiting to the API routes"' },
+  { type: 'blank' },
+  { type: 'dim',     text: '▸ Reading repository graph…' },
+  { type: 'dim',     text: '▸ 47 files analysed · 12 affected · planning…' },
+  { type: 'blank' },
+  { type: 'success', text: '✓ Plan ready — 4 subtasks' },
+  { type: 'file-new', text: '  src/middleware/rateLimiter.ts    [NEW]' },
+  { type: 'file-mod', text: '  src/routes/api/index.ts         [MODIFIED]' },
+  { type: 'file-mod', text: '  src/routes/api/auth.ts          [MODIFIED]' },
+  { type: 'file-mod', text: '  src/config/constants.ts         [MODIFIED]' },
+  { type: 'blank' },
+  { type: 'prompt',  text: '▸ Writing code…  ████████░░  80%' },
+  { type: 'success', text: '✓ All subtasks approved' },
+  { type: 'blank' },
+  { type: 'branch',  text: '⎇  forge/rate-limiting pushed · open your PR' },
+]
+
+const TYPE_COLOURS = {
+  cmd:      'var(--text-primary)',
+  dim:      'var(--text-muted)',
+  success:  'var(--success)',
+  'file-new': 'var(--success)',
+  'file-mod': 'var(--info)',
+  prompt:   'var(--accent)',
+  branch:   'var(--accent-warm)',
+  blank:    'transparent',
+}
+
+function Terminal() {
+  const [lines, setLines] = useState([])
+  const [typing, setTyping] = useState(null)
+  const seqRef    = useRef(0)
+  const lineRef   = useRef(0)
+  const charRef   = useRef(0)
+  const timerRef  = useRef(null)
+  const bottomRef = useRef(null)
+
+  function scheduleNext(ms, fn) {
+    timerRef.current = setTimeout(fn, ms)
+  }
+
+  function typeChar() {
+    const seq = TERMINAL_SEQUENCE
+    if (lineRef.current >= seq.length) {
+      setTyping(null)
+      scheduleNext(3500, () => {
+        lineRef.current = 0
+        charRef.current = 0
+        setLines([])
+        typeChar()
+      })
+      return
+    }
+
+    const item = seq[lineRef.current]
+
+    if (item.type === 'blank') {
+      setLines(prev => [...prev, { text: '', color: 'transparent' }])
+      lineRef.current++
+      scheduleNext(120, typeChar)
+      return
+    }
+
+    const fullText = item.text
+    const color    = TYPE_COLOURS[item.type] || 'var(--text-primary)'
+
+    if (charRef.current < fullText.length) {
+      const isCmd = item.type === 'cmd'
+      const delay = isCmd
+        ? 38 + Math.random() * 28
+        : item.type === 'dim' || item.type === 'file-mod' || item.type === 'file-new'
+          ? 22 + Math.random() * 18
+          : 18
+
+      const partial = fullText.slice(0, charRef.current + 1)
+      charRef.current++
+
+      setTyping({ text: partial, color })
+      scheduleNext(delay, typeChar)
+    } else {
+      setTyping(null)
+      setLines(prev => [...prev, { text: fullText, color }])
+      lineRef.current++
+      charRef.current = 0
+      const pause = item.type === 'cmd' ? 500 : item.type === 'blank' ? 80 : 120
+      scheduleNext(pause, typeChar)
+    }
+  }
+
+  useEffect(() => {
+    scheduleNext(600, typeChar)
+    return () => clearTimeout(timerRef.current)
+  }, [])
+
   return (
-    <section className="min-h-screen flex flex-col items-center justify-center px-6 pt-20 pb-32 relative">
-      <div className="flex flex-col items-center text-center max-w-2xl mx-auto gap-8">
-        <div className="flex items-center gap-2 px-3 py-1 rounded-full border border-accent/20 bg-accent/5">
-          <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
-          <span className="text-xs text-accent font-mono tracking-wider">
-            AI CODING AGENT — MOBILE FIRST
+    <div
+      className="terminal-card w-full rounded-xl overflow-hidden reveal"
+      style={{
+        border: '1px solid var(--bg-border)',
+        background: 'var(--bg-surface)',
+        boxShadow: '0 0 60px rgba(232,103,26,0.07), 0 24px 48px rgba(0,0,0,0.5)',
+      }}
+    >
+      {/* Traffic lights */}
+      <div
+        className="flex items-center gap-2 px-4"
+        style={{
+          height: '42px',
+          borderBottom: '1px solid var(--bg-border)',
+          background: 'var(--bg-elevated)',
+        }}
+      >
+        <span className="w-3 h-3 rounded-full" style={{ background: '#FF5F57' }} />
+        <span className="w-3 h-3 rounded-full" style={{ background: '#FFBD2E' }} />
+        <span className="w-3 h-3 rounded-full" style={{ background: '#28CA41' }} />
+        <span
+          className="ml-3 font-mono text-xs"
+          style={{ color: 'var(--text-muted)' }}
+        >
+          forge — session
+        </span>
+      </div>
+
+      {/* Body */}
+      <div
+        className="p-5 font-mono text-xs overflow-y-auto"
+        style={{ minHeight: '200px', maxHeight: '240px', lineHeight: '1.85' }}
+      >
+        {lines.length === 0 && !typing && (
+          <span style={{ color: 'var(--text-muted)' }}>
+            <span style={{ color: 'var(--accent)' }}>$ </span>
+            <span className="forge-cursor" />
           </span>
+        )}
+
+        {lines.map((line, i) => (
+          <div key={i} style={{ color: line.color }}>
+            {i === 0 && (
+              <span style={{ color: 'var(--accent)' }}>$ </span>
+            )}
+            {line.text}
+          </div>
+        ))}
+
+        {typing && (
+          <div style={{ color: typing.color }}>
+            {lines.length === 0 && (
+              <span style={{ color: 'var(--accent)' }}>$ </span>
+            )}
+            {typing.text}
+            <span className="forge-cursor" />
+          </div>
+        )}
+
+        <div ref={bottomRef} />
+      </div>
+    </div>
+  )
+}
+
+// ─── HERO ──────────────────────────────────────────────────────────
+function Hero({ onSignup }) {
+  return (
+    <section
+      className="relative min-h-screen flex flex-col items-center justify-center px-6 pt-24 pb-20"
+      style={{ overflow: 'hidden' }}
+    >
+      {/* Grid background */}
+      <div className="forge-grid" aria-hidden="true" />
+
+      {/* MOBILE FIX: Added max-w-full and overflow-hidden to prevent wordmark bleed */}
+      <div className="relative z-10 flex flex-col items-center text-center gap-8 w-full max-w-2xl mx-auto overflow-hidden">
+        {/* Badge */}
+        <div
+          className="inline-flex items-center gap-2 px-4 py-1.5 rounded-pill font-mono text-xs tracking-widest uppercase reveal"
+          style={{
+            border: '1px solid rgba(232,103,26,0.25)',
+            background: 'rgba(232,103,26,0.07)',
+            color: 'var(--accent)',
+          }}
+        >
+          <span
+            className="w-1.5 h-1.5 rounded-full forge-pulse"
+            style={{ background: 'var(--accent)' }}
+          />
+          Repository-Aware AI Coding Agent
         </div>
 
-        <ForgeWordmark size="xl" />
+        {/* Wordmark — MOBILE FIX: container prevents overflow */}
+        <div className="w-full flex justify-center reveal">
+          <ForgeWordmark size="2xl" underline />
+        </div>
 
-        <p className="text-xl text-muted font-light leading-relaxed max-w-lg">
-          Code doesn't wait for a desk.{' '}
-          <span className="text-secondary font-medium">Neither does Forge.</span>
+        {/* Subhead */}
+        <p
+          className="text-xl font-body font-light leading-relaxed max-w-lg reveal"
+          style={{ color: 'var(--text-secondary)', fontSize: 'clamp(1rem, 4vw, 1.25rem)' }}
+        >
+          Understands your codebase. Plans the work. Writes the code.{' '}
+          <strong
+            className="font-semibold"
+            style={{ color: 'var(--text-primary)' }}
+          >
+            You approve every step.
+          </strong>
         </p>
 
-        <div className="flex items-center gap-4 pt-2">
+        {/* CTAs — MOBILE FIX: cta-stack class handles vertical stacking */}
+        <div className="cta-stack flex items-center gap-4 flex-wrap justify-center reveal">
           <Button variant="primary" size="lg" onClick={onSignup}>
-            Start Building
+            Connect Your Repo — It's Free
           </Button>
-          <Button variant="ghost" size="lg" onClick={onLogin}>
-            Sign In
+          <Button
+            variant="ghost"
+            size="lg"
+            onClick={() =>
+              document.getElementById('how')?.scrollIntoView({ behavior: 'smooth' })
+            }
+          >
+            See how it works
           </Button>
         </div>
 
-        <div className="flex items-center gap-6 pt-4">
-          {['No laptop', 'No setup', 'No limits'].map((item) => (
-            <div key={item} className="flex items-center gap-1.5">
-              <span className="text-accent text-xs">✦</span>
-              <span className="text-xs text-muted">{item}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Arc reactor glow */}
-      <div
-        className="absolute bottom-0 left-1/2 -translate-x-1/2 w-96 h-px"
-        style={{
-          background: 'linear-gradient(90deg, transparent, #2563EB44, transparent)',
-        }}
-      />
-    </section>
-  )
-}
-
-// ─── PAIN ─────────────────────────────────────────────────────────
-function Pain() {
-  const pains = [
-    {
-      number: '01',
-      heading: 'Your best ideas don\'t happen at a desk',
-      body: 'You\'re on your phone, away from your laptop, and a fix or feature suddenly becomes obvious. You make a note. You forget it. Or worse — you remember it but the momentum is gone by the time you sit down.',
-    },
-    {
-      number: '02',
-      heading: 'Coding tools assume you have a computer',
-      body: 'Every IDE, every CLI, every dev environment is built for a machine with a keyboard. Your phone is more powerful than the computer that sent people to the moon. But it can\'t ship code.',
-    },
-    {
-      number: '03',
-      heading: 'The gap between idea and shipped code is too wide',
-      body: 'Open laptop. Pull latest. Find the file. Understand the context. Write the code. Test it. Commit. Push. By the time you\'ve done all that, the idea has cost you an hour.',
-    },
-  ]
-
-  return (
-    <section className="px-6 py-24 max-w-3xl mx-auto">
-      <div className="flex flex-col gap-3 mb-16">
-        <span className="text-xs font-mono text-accent tracking-widest uppercase">
-          The Problem
-        </span>
-        <h2 className="text-3xl font-semibold text-secondary leading-tight">
-          Great developers are being slowed down
-          <span className="text-muted"> by the tools they depend on.</span>
-        </h2>
-      </div>
-
-      <div className="flex flex-col gap-0">
-        {pains.map((pain, i) => (
-          <div
-            key={pain.number}
-            className="flex gap-6 py-8 border-b border-border last:border-0"
-          >
-            <span className="font-mono text-xs text-accent/40 pt-1 shrink-0 w-6">
-              {pain.number}
-            </span>
-            <div className="flex flex-col gap-2">
-              <h3 className="text-base font-medium text-secondary">
-                {pain.heading}
-              </h3>
-              <p className="text-sm text-muted leading-relaxed">
-                {pain.body}
-              </p>
-            </div>
-          </div>
-        ))}
-      </div>
-    </section>
-  )
-}
-
-// ─── SOLUTION ─────────────────────────────────────────────────────
-function Solution() {
-  const statements = [
-    'Describe a feature.',
-    'Forge plans it.',
-    'Forge writes it.',
-    'You approve it.',
-    'It ships.',
-  ]
-
-  return (
-    <section className="px-6 py-24 border-y border-border relative overflow-hidden">
-      <div
-        className="absolute inset-0 opacity-5"
-        style={{
-          background: 'radial-gradient(ellipse 60% 80% at 50% 50%, #2563EB, transparent)',
-        }}
-      />
-
-      <div className="max-w-3xl mx-auto relative">
-        <div className="flex flex-col gap-3 mb-16">
-          <span className="text-xs font-mono text-accent tracking-widest uppercase">
-            The Solution
-          </span>
-          <h2 className="text-3xl font-semibold text-secondary leading-tight">
-            A coding agent that lives in your pocket.
-            <span className="text-muted"> Fully autonomous. Human approved.</span>
-          </h2>
-        </div>
-
-        <div className="flex flex-col gap-4">
-          {statements.map((s, i) => (
-            <div
-              key={i}
-              className="flex items-center gap-4"
-              style={{ opacity: 1 - i * 0.08 }}
-            >
-              <div className="w-px h-6 bg-accent/20 shrink-0" />
-              <p
-                className="font-mono text-xl font-medium"
-                style={{
-                  color: i === 0 ? '#F0F0F0' : i === 4 ? '#2563EB' : '#888',
-                }}
-              >
-                {s}
-              </p>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  )
-}
-
-// ─── HOW IT WORKS ─────────────────────────────────────────────────
-function HowItWorks() {
-  const steps = [
-    {
-      step: '01',
-      title: 'Connect your repo',
-      body: 'Add any GitHub repo and your personal access token. Forge indexes your codebase instantly so the agent understands your code before it touches it.',
-    },
-    {
-      step: '02',
-      title: 'Describe your task',
-      body: 'Tell Forge what you want in plain English. Fix this bug. Add this feature. Refactor this function. The planner agent breaks it into precise subtasks.',
-    },
-    {
-      step: '03',
-      title: 'Review the plan',
-      body: 'Before any code is written, you see the plan. Approve it, edit it, or reject it. You stay in control at every step.',
-    },
-    {
-      step: '04',
-      title: 'Approve and merge',
-      body: 'Review the full file output and explanation for each change. Approve what you want. Forge pushes to a branch. You merge when ready.',
-    },
-  ]
-
-  return (
-    <section className="px-6 py-24 max-w-3xl mx-auto">
-      <div className="flex flex-col gap-3 mb-16">
-        <span className="text-xs font-mono text-accent tracking-widest uppercase">
-          How It Works
-        </span>
-        <h2 className="text-3xl font-semibold text-secondary leading-tight">
-          From idea to branch in minutes.
-          <span className="text-muted"> From your phone.</span>
-        </h2>
-      </div>
-
-      <div className="grid grid-cols-1 gap-6">
-        {steps.map((s) => (
-          <div
-            key={s.step}
-            className="flex gap-6 p-5 bg-surface border border-border rounded hover:border-accent/30 transition-all duration-150"
-          >
-            <span className="font-mono text-xs text-accent shrink-0 pt-0.5">
-              {s.step}
-            </span>
-            <div className="flex flex-col gap-1.5">
-              <h3 className="text-sm font-semibold text-secondary">
-                {s.title}
-              </h3>
-              <p className="text-sm text-muted leading-relaxed">{s.body}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-    </section>
-  )
-}
-
-// ─── FEATURES ─────────────────────────────────────────────────────
-function Features() {
-  const features = [
-    {
-      title: 'Dual LLM architecture',
-      body: 'A planner agent thinks at the system level. A coder agent executes with precision. Two minds. One result.',
-    },
-    {
-      title: 'Human in the loop',
-      body: 'Forge never pushes code without your approval. You review the plan, the code, and the explanation before anything ships.',
-    },
-    {
-      title: 'Per-repo memory',
-      body: 'Forge remembers every decision, every rejection, every preference — per repo. It gets smarter with every session.',
-    },
-    {
-      title: 'Any model, your key',
-      body: 'Bring your own OpenRouter API key. Choose your planner and coder models. Switch mid-session. You control the intelligence.',
-    },
-    {
-      title: 'Indexes your codebase',
-      body: 'Before planning, Forge reads your entire repo — exports, routes, functions, dependencies. Context-aware from the first prompt.',
-    },
-    {
-      title: 'Branch per session',
-      body: 'Every approved session pushes to its own branch. Clean history. Safe merges. Your main branch stays untouched.',
-    },
-  ]
-
-  return (
-    <section className="px-6 py-24 border-t border-border bg-surface/30">
-      <div className="max-w-3xl mx-auto">
-        <div className="flex flex-col gap-3 mb-16">
-          <span className="text-xs font-mono text-accent tracking-widest uppercase">
-            Features
-          </span>
-          <h2 className="text-3xl font-semibold text-secondary leading-tight">
-            Built for developers who move fast
-            <span className="text-muted"> and can't afford to stop.</span>
-          </h2>
-        </div>
-
-        <div className="grid grid-cols-1 gap-px bg-border">
-          {features.map((f) => (
-            <div
-              key={f.title}
-              className="flex flex-col gap-2 p-6 bg-base hover:bg-surface transition-all duration-150"
-            >
-              <div className="flex items-center gap-2">
-                <span className="w-1 h-4 bg-accent rounded-full" />
-                <h3 className="text-sm font-semibold text-secondary">
-                  {f.title}
-                </h3>
-              </div>
-              <p className="text-sm text-muted leading-relaxed pl-3">
-                {f.body}
-              </p>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  )
-}
-
-// ─── CREDIBILITY ──────────────────────────────────────────────────
-function Credibility() {
-  const stack = [
-    'OpenRouter',
-    'Supabase',
-    'GitHub API',
-    'Next.js',
-    'Poolside Laguna',
-    'Claude Sonnet',
-  ]
-
-  return (
-    <section className="px-6 py-16 border-t border-border">
-      <div className="max-w-3xl mx-auto flex flex-col items-center gap-6 text-center">
-        <p className="text-xs font-mono text-muted tracking-widest uppercase">
-          Powered by
-        </p>
-        <div className="flex flex-wrap items-center justify-center gap-4">
-          {stack.map((item) => (
-            <span
-              key={item}
-              className="px-3 py-1 text-xs font-mono text-muted border border-border rounded-full"
-            >
+        {/* Trust row — MOBILE FIX: trust-row class reduces gap */}
+        <div
+          className="trust-row flex items-center gap-6 flex-wrap justify-center font-mono text-xs reveal"
+          style={{ color: 'var(--text-muted)' }}
+        >
+          {['Web', 'Mobile', 'Any model', 'Your codebase'].map(item => (
+            <span key={item}>
+              <span style={{ color: 'var(--accent)' }}>✦ </span>
               {item}
             </span>
           ))}
         </div>
-        <p className="text-xs text-muted max-w-sm">
-          The world's best coding models. Stateful sessions. Encrypted credentials.
-          Built for developers who ship from anywhere.
+
+        {/* Terminal */}
+        <Terminal />
+      </div>
+    </section>
+  )
+}
+
+// ─── PROBLEM ───────────────────────────────────────────────────────
+function Problem() {
+  const items = [
+    {
+      n: '01',
+      h: 'Context switching kills momentum',
+      b: "Every time you leave the flow to pull latest, find the file, orient yourself in the codebase — you lose the insight that started it all. Forge keeps the flow alive by doing the orientation for you.",
+    },
+    {
+      n: '02',
+      h: 'LLMs without repo context break things',
+      b: "Generic AI tools don't know your codebase. They write plausible code that fails because they didn't see the function it imports, the type it violates, or the route it conflicts with. Forge reads your entire repo before writing a single line.",
+    },
+    {
+      n: '03',
+      h: 'Code review is a black box',
+      b: 'Most AI tools give you code and hope. No plan, no explanation, no control. Forge shows you exactly what will change and why — before it happens. You approve. You stay in control.',
+    },
+  ]
+
+  return (
+    <section
+      id="problem"
+      className="px-6 py-24"
+      style={{ borderTop: '1px solid var(--bg-border)' }}
+    >
+      <div className="max-w-3xl mx-auto">
+        <div className="flex flex-col gap-3 mb-16 reveal">
+          <span
+            className="text-xs font-mono tracking-widest uppercase"
+            style={{ color: 'var(--accent)' }}
+          >
+            The Problem
+          </span>
+          <h2
+            className="font-display font-bold leading-tight"
+            style={{ fontSize: 'clamp(1.3rem, 4vw, 2.2rem)', letterSpacing: '-0.02em', color: 'var(--text-primary)' }}
+          >
+            Great developers are being slowed down{' '}
+            <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>
+              by the tools they depend on.
+            </span>
+          </h2>
+        </div>
+
+        <div>
+          {items.map((item) => (
+            <div
+              key={item.n}
+              className="flex gap-6 py-10 reveal"
+              style={{
+                borderBottom: '1px solid var(--bg-border)',
+                position: 'relative',
+                overflow: 'hidden',
+              }}
+            >
+              {/* Ghost watermark number — MOBILE FIX: ghost-number class caps size */}
+              <span
+                aria-hidden="true"
+                className="ghost-number absolute font-display font-bold pointer-events-none select-none"
+                style={{
+                  fontSize: 'clamp(5rem, 14vw, 11rem)',
+                  color: 'var(--text-muted)',
+                  opacity: 0.055,
+                  top: '-0.1em',
+                  left: '-0.03em',
+                  lineHeight: 1,
+                }}
+              >
+                {item.n}
+              </span>
+
+              <span
+                className="font-mono text-xs pt-1 shrink-0 w-5 z-10"
+                style={{ color: 'rgba(232,103,26,0.45)' }}
+              >
+                {item.n}
+              </span>
+
+              <div className="z-10">
+                <h3
+                  className="font-display font-semibold mb-2"
+                  style={{ fontSize: 'clamp(0.9rem, 3vw, 0.95rem)', color: 'var(--text-primary)', lineHeight: 1.4 }}
+                >
+                  {item.h}
+                </h3>
+                <p
+                  className="font-body text-sm leading-relaxed"
+                  style={{ color: 'var(--text-secondary)', maxWidth: '54ch' }}
+                >
+                  {item.b}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+// ─── HOW IT WORKS ──────────────────────────────────────────────────
+function HowItWorks() {
+  const steps = [
+    {
+      n: '01',
+      title: 'Connect your repository',
+      body: 'Paste your GitHub repo URL and a personal access token. Forge indexes your entire codebase — every import, export, function, and dependency — building a live knowledge graph of what your code does and how it connects.',
+      tag: 'ts-morph · GitHub API · Supabase',
+    },
+    {
+      n: '02',
+      title: 'Describe your task in plain English',
+      body: 'Type what you want to build or fix. No file paths, no function names — just intent. "Add a dark mode toggle to settings" is enough. Forge knows your codebase deeply enough to figure out the rest.',
+      tag: 'Natural language input',
+    },
+    {
+      n: '03',
+      title: 'Review the AI-generated plan',
+      body: 'The Planner LLM analyses your task against the repository graph, identifies every affected file — direct and indirect — and breaks the work into ordered subtasks. You see exactly what will change and why, before a single line of code is written.',
+      tag: 'Planner LLM · Risk assessment',
+    },
+    {
+      n: '04',
+      title: 'Approve or reject each code change',
+      body: 'The Coder LLM executes each subtask with the minimum necessary context injected. You see a full diff, an explanation of every change, and risk flags. Approve what you trust. Reject what you don\'t — with feedback to replan.',
+      tag: 'Coder LLM · Diff viewer · Human in the loop',
+    },
+    {
+      n: '05',
+      title: 'It pushes to a branch. You merge.',
+      body: 'Every approved session auto-creates a named branch and pushes the changes via GitHub API. Your main branch stays untouched. Open the PR, review it one final time, and merge when ready.',
+      tag: 'GitHub branch · PR workflow',
+    },
+  ]
+
+  return (
+    <section
+      id="how"
+      className="px-6 py-24"
+      style={{ borderTop: '1px solid var(--bg-border)', background: 'rgba(17,17,19,0.6)' }}
+    >
+      <div className="max-w-3xl mx-auto">
+        <div className="flex flex-col gap-3 mb-16 reveal">
+          <span
+            className="text-xs font-mono tracking-widest uppercase"
+            style={{ color: 'var(--accent)' }}
+          >
+            How it works
+          </span>
+          <h2
+            className="font-display font-bold leading-tight"
+            style={{ fontSize: 'clamp(1.3rem, 4vw, 2.2rem)', letterSpacing: '-0.02em', color: 'var(--text-primary)' }}
+          >
+            From idea to branch{' '}
+            <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>
+              in five steps.
+            </span>
+          </h2>
+        </div>
+
+        <div>
+          {steps.map((step) => (
+            <div
+              key={step.n}
+              className="grid gap-5 py-8 reveal"
+              style={{
+                gridTemplateColumns: '44px 1fr',
+                borderBottom: '1px solid var(--bg-border)',
+              }}
+            >
+              <span
+                className="font-mono text-xs font-semibold pt-1"
+                style={{ color: 'var(--accent)' }}
+              >
+                {step.n}
+              </span>
+              <div>
+                <h3
+                  className="font-display font-semibold mb-2"
+                  style={{ fontSize: 'clamp(0.9rem, 3vw, 1rem)', color: 'var(--text-primary)' }}
+                >
+                  {step.title}
+                </h3>
+                <p
+                  className="font-body text-sm leading-relaxed mb-3"
+                  style={{ color: 'var(--text-secondary)', maxWidth: '52ch' }}
+                >
+                  {step.body}
+                </p>
+                <span
+                  className="inline-flex items-center font-mono text-xs px-3 py-1 rounded-pill"
+                  style={{
+                    border: '1px solid var(--bg-border)',
+                    color: 'var(--text-muted)',
+                  }}
+                >
+                  {step.tag}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+// ─── FEATURES — BENTO GRID ─────────────────────────────────────────
+function Features() {
+  const cards = [
+    {
+      span: 'full',
+      title: 'Dual LLM Architecture',
+      body: 'A Planner LLM thinks at the system level — understanding structure, risk, and order. A Coder LLM executes with surgical precision on each subtask. Two minds. One clean result. Never compromising planning for speed, or speed for planning.',
+      accent: true,
+    },
+    {
+      title: 'Human in the loop',
+      body: 'Forge never pushes without your approval. Plan → Code → Review. Two gates. Every time. Your code, your call.',
+      icon: '👁',
+    },
+    {
+      title: 'Per-repo memory',
+      body: 'Every decision, rejection, and preference remembered per repo. Forge gets smarter with every session you run.',
+      icon: '🧠',
+    },
+    {
+      title: 'Any model, your key',
+      body: 'Bring your OpenRouter API key. Choose planner and coder models independently. Switch anytime. You own the intelligence.',
+      icon: '🔑',
+    },
+    {
+      title: 'Deep repo indexing',
+      body: 'Before planning, Forge reads your entire codebase — exports, routes, functions, call graphs. Context-aware from the first prompt.',
+      icon: '🗂',
+    },
+    {
+      title: 'Branch per session',
+      body: 'Every approved session auto-pushes to a clean named branch. Main stays untouched. Open a PR and merge when ready.',
+      icon: '⎇',
+    },
+  ]
+
+  return (
+    <section
+      id="features"
+      className="px-6 py-24"
+      style={{ borderTop: '1px solid var(--bg-border)' }}
+    >
+      <div className="max-w-3xl mx-auto">
+        <div className="flex flex-col gap-3 mb-16 reveal">
+          <span
+            className="text-xs font-mono tracking-widest uppercase"
+            style={{ color: 'var(--accent)' }}
+          >
+            Features
+          </span>
+          <h2
+            className="font-display font-bold leading-tight"
+            style={{ fontSize: 'clamp(1.3rem, 4vw, 2.2rem)', letterSpacing: '-0.02em', color: 'var(--text-primary)' }}
+          >
+            Built for developers who move fast{' '}
+            <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>
+              and can't afford to stop.
+            </span>
+          </h2>
+        </div>
+
+        {/* Bento grid — MOBILE FIX: bento-grid class → 1 col on mobile */}
+        <div
+          className="bento-grid grid gap-px reveal"
+          style={{
+            gridTemplateColumns: 'repeat(2, 1fr)',
+            background: 'var(--bg-border)',
+            borderRadius: '12px',
+            overflow: 'hidden',
+          }}
+        >
+          {cards.map((card, i) => (
+            <div
+              key={i}
+              className="flex flex-col gap-3 p-6 transition-all duration-normal cursor-default"
+              style={{
+                gridColumn: card.span === 'full' ? 'span 2' : 'span 1',
+                background: 'var(--bg-surface)',
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.background = 'var(--bg-elevated)'
+                e.currentTarget.style.boxShadow = 'inset 0 0 0 1px var(--accent-dim)'
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.background = 'var(--bg-surface)'
+                e.currentTarget.style.boxShadow = 'none'
+              }}
+            >
+              {card.accent && (
+                <div
+                  className="w-8 h-0.5 rounded"
+                  style={{ background: 'var(--accent)' }}
+                />
+              )}
+              {card.icon && (
+                <div
+                  className="w-9 h-9 rounded-lg flex items-center justify-center text-base"
+                  style={{ background: 'var(--accent-dim)' }}
+                >
+                  {card.icon}
+                </div>
+              )}
+              <h3
+                className="font-display font-semibold"
+                style={{ fontSize: 'clamp(0.85rem, 2.5vw, 0.95rem)', color: 'var(--text-primary)' }}
+              >
+                {card.title}
+              </h3>
+              <p
+                className="font-body text-sm leading-relaxed"
+                style={{ color: 'var(--text-secondary)' }}
+              >
+                {card.body}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+// ─── STACK ─────────────────────────────────────────────────────────
+function Stack() {
+  const pills = [
+    'OpenRouter', 'Supabase', 'GitHub API',
+    'Next.js 15', 'ts-morph', 'Claude Sonnet',
+    'Poolside Laguna', 'Fastify', 'PostgreSQL',
+  ]
+
+  return (
+    <section
+      className="px-6 py-20"
+      style={{ borderTop: '1px solid var(--bg-border)' }}
+    >
+      <div className="max-w-3xl mx-auto flex flex-col items-center gap-6 text-center reveal">
+        <p
+          className="font-mono text-xs tracking-widest uppercase"
+          style={{ color: 'var(--text-muted)' }}
+        >
+          Powered by
+        </p>
+        <div className="flex flex-wrap justify-center gap-2">
+          {pills.map(p => (
+            <span
+              key={p}
+              className="px-3 py-1.5 font-mono text-xs rounded-pill transition-all duration-fast cursor-default"
+              style={{
+                border: '1px solid var(--bg-border)',
+                background: 'var(--bg-surface)',
+                color: 'var(--text-secondary)',
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.borderColor = 'var(--accent-dim)'
+                e.currentTarget.style.color = 'var(--text-primary)'
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.borderColor = 'var(--bg-border)'
+                e.currentTarget.style.color = 'var(--text-secondary)'
+              }}
+            >
+              {p}
+            </span>
+          ))}
+        </div>
+        <p
+          className="font-body text-sm leading-relaxed max-w-xs"
+          style={{ color: 'var(--text-muted)' }}
+        >
+          The world's best coding models. Stateful sessions. Encrypted credentials. Works on every screen.
         </p>
       </div>
     </section>
   )
 }
 
-// ─── FINAL CTA ────────────────────────────────────────────────────
+// ─── FINAL CTA ─────────────────────────────────────────────────────
 function FinalCTA({ onSignup }) {
   return (
-    <section className="px-6 py-32 relative overflow-hidden">
+    <section
+      className="relative px-6 py-32 overflow-hidden"
+      style={{ borderTop: '1px solid var(--bg-border)' }}
+    >
+      {/* Radial glow from bottom */}
       <div
-        className="absolute inset-0"
+        aria-hidden="true"
+        className="absolute inset-0 pointer-events-none"
         style={{
-          background: 'radial-gradient(ellipse 80% 60% at 50% 100%, #2563eb0a 0%, transparent 70%)',
+          background: 'radial-gradient(ellipse 70% 50% at 50% 100%, rgba(232,103,26,0.09) 0%, transparent 70%)',
         }}
       />
-      <div className="max-w-2xl mx-auto flex flex-col items-center text-center gap-8 relative">
-        <ForgeWordmark size="lg" />
-        <p className="text-2xl font-light text-muted leading-relaxed">
-          Your next commit is waiting.
-          <br />
-          <span className="text-secondary font-medium">
-            Start building from your phone.
-          </span>
+
+      <div className="relative z-10 max-w-2xl mx-auto flex flex-col items-center text-center gap-8 reveal">
+        {/* MOBILE FIX: constrain wordmark width */}
+        <div className="w-full flex justify-center">
+          <ForgeWordmark size="xl" underline />
+        </div>
+
+        <p
+          className="font-body font-light leading-relaxed"
+          style={{ fontSize: 'clamp(1rem, 3vw, 1.4rem)', color: 'var(--text-muted)' }}
+        >
+          Your codebase understood. Your code shipped.
+          <strong
+            className="block mt-2 font-semibold"
+            style={{ color: 'var(--text-primary)' }}
+          >
+            Start building from anywhere.
+          </strong>
         </p>
-        <Button variant="primary" size="lg" onClick={onSignup}>
-          Start Building — It's Free
+
+        <Button
+          variant="primary"
+          size="lg"
+          onClick={onSignup}
+          fullWidth
+          className="max-w-sm"
+          style={{ fontSize: 'clamp(0.85rem, 2.5vw, 1rem)' }}
+        >
+          Connect Your Repo — It's Free
         </Button>
-        <p className="text-xs text-muted">
-          No laptop required. No setup. Just your phone and a GitHub repo.
+
+        <p
+          className="font-mono text-xs"
+          style={{ color: 'var(--text-muted)' }}
+        >
+          Works on web, tablet, and mobile. Your model. Your key.
         </p>
       </div>
-
-      <div
-        className="absolute bottom-0 left-0 right-0 h-px"
-        style={{
-          background: 'linear-gradient(90deg, transparent, #2563EB44, transparent)',
-        }}
-      />
     </section>
   )
 }
 
-// ─── FOOTER ───────────────────────────────────────────────────────
+// ─── FOOTER ────────────────────────────────────────────────────────
 function Footer() {
   return (
-    <footer className="px-6 py-6 border-t border-border">
-      <div className="max-w-3xl mx-auto flex items-center justify-between">
-        <ForgeWordmark size="sm" />
-        <p className="text-xs text-muted font-mono">
-          © {new Date().getFullYear()} Forge
-        </p>
-      </div>
+    <footer
+      className="px-6 py-5 flex items-center justify-between"
+      style={{ borderTop: '1px solid var(--bg-border)' }}
+    >
+      <ForgeWordmark size="xs" />
+      <p className="font-mono text-xs" style={{ color: 'var(--text-muted)' }}>
+        © 2026 Forge
+      </p>
     </footer>
   )
 }
 
-// ─── PAGE ─────────────────────────────────────────────────────────
+// ─── PAGE ──────────────────────────────────────────────────────────
 export default function LandingPage() {
   const router = useRouter()
+  useReveal()
 
-  const goToSignup = () => router.push('/signup')
-  const goToLogin = () => router.push('/login')
+  const goLogin  = () => router.push('/login')
+  const goSignup = () => router.push('/signup')
 
   return (
-    <div className="bg-base text-secondary min-h-screen">
-      <GridBackground />
-      <Nav onLogin={goToLogin} onSignup={goToSignup} />
-      <Hero onSignup={goToSignup} onLogin={goToLogin} />
-      <Pain />
-      <Solution />
-      <HowItWorks />
-      <Features />
-      <Credibility />
-      <FinalCTA onSignup={goToSignup} />
+    <div className="min-h-screen bg-base">
+      <Nav onLogin={goLogin} onSignup={goSignup} />
+      <main>
+        <Hero   onSignup={goSignup} />
+        <Problem />
+        <HowItWorks />
+        <Features />
+        <Stack />
+        <FinalCTA onSignup={goSignup} />
+      </main>
       <Footer />
     </div>
   )
