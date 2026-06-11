@@ -4,26 +4,132 @@
  * FORGE — CodeReview + DiffViewer component
  * Phase 6: Coding Execution Interface — CRITICAL FEATURE
  *
- * This is the trust mechanism for code approval.
- * Every change is visible before it ships.
- *
- * Features:
- * - GitHub-quality diff viewer: line numbers, +/- indicators
- * - Minimal JS/TS syntax tokeniser (no heavy library)
- * - Collapsible unchanged sections ("... 8 unchanged lines ...")
- * - Planner explanation panel below each diff
- * - Multi-file navigator at top
- * - Approve / Request Changes / Reject & Replan actions
- * - Push confirmation screen
+ * Integration fixes applied:
+ *   #1 /agent/approve-code → /agent/approve  |  payload: { draft_id } only
+ *   #2 /agent/replan-subtask → /agent/feedback  |  payload: { draft_id, feedback }
+ *   #3 Removed separate /agent/push — approve already pushes; use branch/github_url
+ *      from the approve response to drive PushSuccess display
+ *   #4 generated_code removed — diff computed client-side from
+ *      original_content + new_content via Myers-style LCS differ
  */
 
 import { useState, useMemo } from 'react'
 import { apiFetch } from '@/lib/supabase/api'
 import Button from '@/components/ui/Button'
 
+// ─── CLIENT-SIDE DIFF COMPUTATION ─────────────────────────────────
+// Fix #5: Build a unified diff from original_content + new_content.
+// Uses a simple O(ND) LCS approach — no external library needed.
+
+function lcs(a, b) {
+  // Returns the longest common subsequence of two line arrays.
+  const m = a.length, n = b.length
+  // dp[i][j] = length of LCS of a[0..i-1], b[0..j-1]
+  const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0))
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = a[i - 1] === b[j - 1]
+        ? dp[i - 1][j - 1] + 1
+        : Math.max(dp[i - 1][j], dp[i][j - 1])
+    }
+  }
+  // Backtrack
+  const result = []
+  let i = m, j = n
+  while (i > 0 && j > 0) {
+    if (a[i - 1] === b[j - 1]) { result.push({ aIdx: i - 1, bIdx: j - 1 }); i--; j-- }
+    else if (dp[i - 1][j] >= dp[i][j - 1]) i--
+    else j--
+  }
+  return result.reverse()
+}
+
+function computeUnifiedDiff(originalContent, newContent, fileName = 'file') {
+  // Guard: if no original (new file) show everything as additions
+  const origLines = (originalContent || '').split('\n')
+  const newLines  = (newContent  || '').split('\n')
+
+  if (!originalContent) {
+    // Brand-new file — everything is added
+    const hunks = [`@@ -0,0 +1,${newLines.length} @@`]
+    newLines.forEach(l => hunks.push(`+${l}`))
+    return [`--- /dev/null`, `+++ b/${fileName}`, ...hunks].join('\n')
+  }
+
+  const common = lcs(origLines, newLines)
+  const lines  = []
+  let ai = 0, bi = 0, ci = 0
+  const CONTEXT = 3
+
+  // Build raw edit script
+  const edits = [] // { type: 'del'|'add'|'eq', aIdx, bIdx, text }
+  while (ai < origLines.length || bi < newLines.length) {
+    if (ci < common.length && common[ci].aIdx === ai && common[ci].bIdx === bi) {
+      edits.push({ type: 'eq', aIdx: ai, bIdx: bi, text: origLines[ai] })
+      ai++; bi++; ci++
+    } else if (ci < common.length && common[ci].aIdx > ai) {
+      edits.push({ type: 'del', aIdx: ai, text: origLines[ai] })
+      ai++
+    } else {
+      edits.push({ type: 'add', bIdx: bi, text: newLines[bi] })
+      bi++
+    }
+  }
+
+  // Group into hunks with CONTEXT lines around changes
+  const changedSet = new Set(edits.map((e, i) => e.type !== 'eq' ? i : -1).filter(i => i !== -1))
+  const included   = new Set()
+  changedSet.forEach(i => {
+    for (let d = -CONTEXT; d <= CONTEXT; d++) {
+      if (i + d >= 0 && i + d < edits.length) included.add(i + d)
+    }
+  })
+
+  if (included.size === 0) return '' // no changes
+
+  // Build unified diff string
+  const diffLines = [`--- a/${fileName}`, `+++ b/${fileName}`]
+  let hunkStart = -1
+  let hunkLines = []
+  let oldStart = 1, newStart = 1
+  let oldCount = 0, newCount = 0
+
+  function flushHunk() {
+    if (!hunkLines.length) return
+    diffLines.push(`@@ -${oldStart},${oldCount} +${newStart},${newCount} @@`)
+    hunkLines.forEach(l => diffLines.push(l))
+    hunkLines = []
+    oldCount = 0
+    newCount = 0
+  }
+
+  let lastIncluded = -1
+  edits.forEach((e, i) => {
+    if (!included.has(i)) {
+      if (hunkLines.length) flushHunk()
+      return
+    }
+    if (lastIncluded !== -1 && i > lastIncluded + 1) flushHunk()
+    if (!hunkLines.length) {
+      // Count lines before this hunk to set oldStart/newStart
+      let oa = 1, nb = 1
+      for (let j = 0; j < i; j++) {
+        if (edits[j].type !== 'add') oa++
+        if (edits[j].type !== 'del') nb++
+      }
+      oldStart = oa; newStart = nb
+    }
+    if (e.type === 'del') { hunkLines.push(`-${e.text}`); oldCount++ }
+    else if (e.type === 'add') { hunkLines.push(`+${e.text}`); newCount++ }
+    else { hunkLines.push(` ${e.text}`); oldCount++; newCount++ }
+    lastIncluded = i
+  })
+  flushHunk()
+
+  return diffLines.join('\n')
+}
+
 // ─── MINIMAL TS/JS TOKENISER ───────────────────────────────────────
-// Colours key syntax without a heavy library.
-// Regex-based, handles: keywords, strings, comments, types, numbers.
 const KEYWORD_RE  = /\b(const|let|var|function|async|await|return|import|export|default|from|if|else|for|while|class|extends|new|typeof|instanceof|throw|try|catch|finally|interface|type|enum|implements|void|null|undefined|true|false|in|of|break|continue|switch|case|do|delete)\b/g
 const STRING_RE   = /(["'`])(?:(?!\1)[^\\]|\\.)*\1/g
 const COMMENT_RE  = /(\/\/[^\n]*)|(\/\*[\s\S]*?\*\/)/g
@@ -31,15 +137,11 @@ const TYPE_RE     = /\b([A-Z][A-Za-z0-9_]*)\b/g
 const NUMBER_RE   = /\b(\d+\.?\d*)\b/g
 
 function tokenise(code) {
-  // Returns array of {text, type} tokens
-  // Simple approach: escape HTML then apply span wrappers
   if (!code) return ''
-
   const escaped = code
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-
   return escaped
     .replace(COMMENT_RE, m => `<span style="color:var(--text-muted);font-style:italic">${m}</span>`)
     .replace(STRING_RE,  m => `<span style="color:var(--success)">${m}</span>`)
@@ -49,7 +151,6 @@ function tokenise(code) {
 }
 
 // ─── DIFF PARSER ──────────────────────────────────────────────────
-// Parses unified diff text into line objects.
 function parseDiff(diffText) {
   if (!diffText) return []
   const lines = diffText.split('\n')
@@ -60,7 +161,6 @@ function parseDiff(diffText) {
     if (raw.startsWith('---') || raw.startsWith('+++')) continue
 
     if (raw.startsWith('@@')) {
-      // Hunk header — e.g. @@ -4,7 +4,9 @@
       const m = raw.match(/@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/)
       if (m) { oldN = parseInt(m[1]); newN = parseInt(m[2]) }
       result.push({ type: 'hunk', text: raw })
@@ -80,15 +180,11 @@ function parseDiff(diffText) {
 }
 
 // ─── DIFF VIEWER ──────────────────────────────────────────────────
-const CONTEXT_LINES = 3 // show N lines either side of a change
-
 function DiffViewer({ diffText, fileName }) {
-  const [expandedHunks, setExpandedHunks] = useState({})
-  const parsed = useMemo(() => parseDiff(diffText), [diffText])
-
-  const addCount     = parsed.filter(l => l.type === 'add').length
-  const delCount     = parsed.filter(l => l.type === 'del').length
-  const isNewFile    = delCount === 0 && addCount > 0
+  const parsed   = useMemo(() => parseDiff(diffText), [diffText])
+  const addCount = parsed.filter(l => l.type === 'add').length
+  const delCount = parsed.filter(l => l.type === 'del').length
+  const isNewFile     = delCount === 0 && addCount > 0
   const isDeletedFile = addCount === 0 && delCount > 0
 
   if (!parsed.length) return (
@@ -96,23 +192,6 @@ function DiffViewer({ diffText, fileName }) {
       No diff available
     </div>
   )
-
-  // Collapse long neutral runs
-  function shouldCollapse(lines) {
-    // Group into segments: changed vs neutral
-    const groups = []
-    let current  = null
-    lines.forEach((line, i) => {
-      const isChanged = line.type === 'add' || line.type === 'del'
-      if (!current || current.changed !== isChanged) {
-        current = { changed: isChanged, start: i, end: i }
-        groups.push(current)
-      } else {
-        current.end = i
-      }
-    })
-    return groups
-  }
 
   return (
     <div
@@ -122,10 +201,7 @@ function DiffViewer({ diffText, fileName }) {
       {/* File header */}
       <div
         className="flex items-center justify-between px-4 py-3"
-        style={{
-          background: 'var(--bg-elevated)',
-          borderBottom: '1px solid var(--bg-border)',
-        }}
+        style={{ background: 'var(--bg-elevated)', borderBottom: '1px solid var(--bg-border)' }}
       >
         <div className="flex items-center gap-2.5">
           <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden="true">
@@ -135,56 +211,46 @@ function DiffViewer({ diffText, fileName }) {
           <span className="font-mono text-xs" style={{ color: 'var(--info)' }}>
             {fileName || 'file.ts'}
           </span>
-          {isNewFile    && <FileMark type="new" />}
+          {isNewFile     && <FileMark type="new" />}
           {isDeletedFile && <FileMark type="deleted" />}
           {!isNewFile && !isDeletedFile && <FileMark type="modified" />}
         </div>
         <div className="flex items-center gap-3 font-mono text-xs">
-          {addCount > 0 && (
-            <span style={{ color: 'var(--success)' }}>+{addCount}</span>
-          )}
-          {delCount > 0 && (
-            <span style={{ color: 'var(--error)' }}>−{delCount}</span>
-          )}
+          {addCount > 0 && <span style={{ color: 'var(--success)' }}>+{addCount}</span>}
+          {delCount > 0 && <span style={{ color: 'var(--error)' }}>−{delCount}</span>}
         </div>
       </div>
 
-      {/* Diff lines */}
+      {/* Diff table */}
       <div className="overflow-x-auto">
         <table className="w-full border-collapse" style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem' }}>
           <tbody>
             {parsed.map((line, i) => {
-              if (line.type === 'hunk') {
-                return (
-                  <tr key={i}>
-                    <td
-                      colSpan={3}
-                      className="px-4 py-1 select-none"
-                      style={{
-                        background: 'rgba(96,165,250,0.06)',
-                        color: 'var(--text-muted)',
-                        borderTop: '1px solid var(--bg-border)',
-                        borderBottom: '1px solid var(--bg-border)',
-                        fontStyle: 'italic',
-                      }}
-                    >
-                      {line.text}
-                    </td>
-                  </tr>
-                )
-              }
+              if (line.type === 'hunk') return (
+                <tr key={i}>
+                  <td
+                    colSpan={3}
+                    className="px-4 py-1 select-none"
+                    style={{
+                      background: 'rgba(96,165,250,0.06)',
+                      color: 'var(--text-muted)',
+                      borderTop: '1px solid var(--bg-border)',
+                      borderBottom: '1px solid var(--bg-border)',
+                      fontStyle: 'italic',
+                    }}
+                  >
+                    {line.text}
+                  </td>
+                </tr>
+              )
 
-              const bgMap    = { add: 'rgba(45,212,191,0.07)', del: 'rgba(248,113,113,0.07)', neutral: 'transparent' }
-              const numColor = { add: 'var(--success)', del: 'var(--error)', neutral: 'var(--text-muted)' }
-              const prefix   = { add: '+', del: '−', neutral: ' ' }
+              const bgMap       = { add: 'rgba(45,212,191,0.07)', del: 'rgba(248,113,113,0.07)', neutral: 'transparent' }
+              const numColor    = { add: 'var(--success)', del: 'var(--error)', neutral: 'var(--text-muted)' }
+              const prefix      = { add: '+', del: '−', neutral: ' ' }
               const prefixColor = { add: 'var(--success)', del: 'var(--error)', neutral: 'var(--text-muted)' }
 
               return (
-                <tr
-                  key={i}
-                  style={{ background: bgMap[line.type] }}
-                >
-                  {/* Old line num */}
+                <tr key={i} style={{ background: bgMap[line.type] }}>
                   <td
                     className="px-3 py-0.5 text-right select-none w-10"
                     style={{
@@ -196,7 +262,6 @@ function DiffViewer({ diffText, fileName }) {
                   >
                     {line.oldN ?? ''}
                   </td>
-                  {/* New line num */}
                   <td
                     className="px-3 py-0.5 text-right select-none w-10"
                     style={{
@@ -208,14 +273,12 @@ function DiffViewer({ diffText, fileName }) {
                   >
                     {line.newN ?? ''}
                   </td>
-                  {/* Prefix */}
                   <td
                     className="px-2 py-0.5 select-none w-5"
                     style={{ color: prefixColor[line.type] }}
                   >
                     {prefix[line.type]}
                   </td>
-                  {/* Content */}
                   <td
                     className="px-2 py-0.5 whitespace-pre"
                     style={{ color: line.type === 'neutral' ? 'var(--text-secondary)' : undefined }}
@@ -231,7 +294,6 @@ function DiffViewer({ diffText, fileName }) {
   )
 }
 
-// Small helper for file type marks
 function FileMark({ type }) {
   const map = {
     new:      { label: 'NEW',      color: 'var(--success)', bg: 'rgba(45,212,191,0.08)'  },
@@ -255,17 +317,13 @@ function FileNav({ tasks, activeId, onSelect }) {
   return (
     <div
       className="flex items-center gap-1 px-4 py-2 overflow-x-auto"
-      style={{
-        borderBottom: '1px solid var(--bg-border)',
-        background: 'var(--bg-elevated)',
-      }}
+      style={{ borderBottom: '1px solid var(--bg-border)', background: 'var(--bg-elevated)' }}
     >
       {tasks.map(task => {
         const isActive  = task.id === activeId
         const isDone    = task.status === 'done'
         const isReady   = task.status === 'awaiting_approval'
         const isRunning = task.status === 'running'
-
         return (
           <button
             key={task.id}
@@ -291,10 +349,7 @@ function FileNav({ tasks, activeId, onSelect }) {
               </svg>
             )}
             {isRunning && (
-              <span
-                className="w-1.5 h-1.5 rounded-full forge-pulse"
-                style={{ background: 'var(--warning)' }}
-              />
+              <span className="w-1.5 h-1.5 rounded-full forge-pulse" style={{ background: 'var(--warning)' }} />
             )}
             {task.file_path?.split('/').pop() || 'file'}
           </button>
@@ -304,95 +359,11 @@ function FileNav({ tasks, activeId, onSelect }) {
   )
 }
 
-// ─── PUSH CONFIRMATION ────────────────────────────────────────────
-function PushConfirmation({ session, onPush, onCancel, pushing }) {
-  const tasks = session?.tasks || []
-  const adds  = tasks.reduce((n, t) => n + (t.lines_added   || 0), 0)
-  const dels  = tasks.reduce((n, t) => n + (t.lines_deleted || 0), 0)
-
-  return (
-    <div className="flex flex-col h-full items-center justify-center px-8">
-      <div
-        className="w-full max-w-md rounded-xl p-8 flex flex-col gap-6"
-        style={{ background: 'var(--bg-surface)', border: '1px solid var(--bg-border)' }}
-      >
-        {/* Icon */}
-        <div
-          className="w-12 h-12 rounded-xl flex items-center justify-center"
-          style={{ background: 'var(--accent-dim)', border: '1px solid var(--accent)' }}
-        >
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-            <path d="M10 3v10M6 9l4 4 4-4M4 15h12" stroke="var(--accent)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </div>
-
-        <div>
-          <h2
-            className="font-display font-bold mb-1"
-            style={{ fontSize: '1.1rem', color: 'var(--text-primary)' }}
-          >
-            Ready to push
-          </h2>
-          <p className="font-body text-sm" style={{ color: 'var(--text-secondary)' }}>
-            All subtasks approved. This will push to a new branch on GitHub.
-          </p>
-        </div>
-
-        {/* Stats */}
-        <div
-          className="rounded-lg p-4 flex flex-col gap-2"
-          style={{ background: 'var(--bg-elevated)', border: '1px solid var(--bg-border)' }}
-        >
-          <div className="flex items-center justify-between font-mono text-xs">
-            <span style={{ color: 'var(--text-muted)' }}>Branch</span>
-            <span style={{ color: 'var(--accent-warm)' }}>
-              forge/{session?.task?.toLowerCase().replace(/\s+/g, '-').slice(0, 30) || 'changes'}
-            </span>
-          </div>
-          <div className="flex items-center justify-between font-mono text-xs">
-            <span style={{ color: 'var(--text-muted)' }}>Files changed</span>
-            <span style={{ color: 'var(--text-primary)' }}>{tasks.length}</span>
-          </div>
-          {adds > 0 && (
-            <div className="flex items-center justify-between font-mono text-xs">
-              <span style={{ color: 'var(--text-muted)' }}>Lines added</span>
-              <span style={{ color: 'var(--success)' }}>+{adds}</span>
-            </div>
-          )}
-          {dels > 0 && (
-            <div className="flex items-center justify-between font-mono text-xs">
-              <span style={{ color: 'var(--text-muted)' }}>Lines removed</span>
-              <span style={{ color: 'var(--error)' }}>−{dels}</span>
-            </div>
-          )}
-        </div>
-
-        <p
-          className="font-body text-xs leading-relaxed"
-          style={{ color: 'var(--text-muted)' }}
-        >
-          Your main branch will not be touched. Open a Pull Request on GitHub and merge when you're ready.
-        </p>
-
-        <div className="flex gap-3">
-          <Button variant="primary" size="md" className="flex-1" loading={pushing} onClick={onPush}>
-            Push to GitHub
-          </Button>
-          <Button variant="ghost" size="md" onClick={onCancel}>
-            Cancel
-          </Button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 // ─── PUSH SUCCESS ─────────────────────────────────────────────────
-function PushSuccess({ session }) {
-  const branchName = `forge/${session?.task?.toLowerCase().replace(/\s+/g, '-').slice(0, 30) || 'changes'}`
-  const repoUrl    = session?.repo_url || '#'
-  const prUrl      = `${repoUrl}/compare/${branchName}`
-
+// Fix #4: Now receives real branch + github_url from approve response,
+// not from a separate /agent/push call.
+function PushSuccess({ branch, githubUrl, session }) {
+  const prUrl = githubUrl || '#'
   return (
     <div className="flex flex-col h-full items-center justify-center px-8">
       <div
@@ -409,17 +380,11 @@ function PushSuccess({ session }) {
         </div>
 
         <div>
-          <h2
-            className="font-display font-bold mb-2"
-            style={{ fontSize: '1.1rem', color: 'var(--text-primary)' }}
-          >
+          <h2 className="font-display font-bold mb-2" style={{ fontSize: '1.1rem', color: 'var(--text-primary)' }}>
             Pushed successfully
           </h2>
-          <p
-            className="font-mono text-xs"
-            style={{ color: 'var(--accent-warm)' }}
-          >
-            ⎇ {branchName}
+          <p className="font-mono text-xs" style={{ color: 'var(--accent-warm)' }}>
+            ⎇ {branch || 'forge/changes'}
           </p>
         </div>
 
@@ -447,18 +412,26 @@ function PushSuccess({ session }) {
 }
 
 // ─── REQUEST CHANGES FLOW ─────────────────────────────────────────
-function RequestChanges({ task, sessionId, onDone, onCancel }) {
+// Fix #3: /agent/replan-subtask → /agent/feedback  |  payload: { draft_id, feedback }
+function RequestChanges({ task, onDone, onCancel }) {
   const [feedback, setFeedback] = useState('')
   const [loading,  setLoading]  = useState(false)
   const [error,    setError]    = useState(null)
 
+  const draft = task?.code_drafts?.[0]
+
   async function handleSubmit() {
+    if (!draft?.id) {
+      setError('No draft found for this task.')
+      return
+    }
     setLoading(true)
     setError(null)
     try {
-      await apiFetch('/agent/replan-subtask', {
+      // Fix #3: correct endpoint + payload
+      await apiFetch('/agent/feedback', {
         method: 'POST',
-        body: JSON.stringify({ session_id: sessionId, subtask_id: task.id, feedback }),
+        body: JSON.stringify({ draft_id: draft.id, feedback }),
       })
       onDone?.()
     } catch (err) {
@@ -495,14 +468,8 @@ function RequestChanges({ task, sessionId, onDone, onCancel }) {
           color: 'var(--text-primary)',
           outline: 'none',
         }}
-        onFocus={e => {
-          e.target.style.borderColor = 'var(--accent)'
-          e.target.style.boxShadow   = '0 0 0 3px var(--accent-dim)'
-        }}
-        onBlur={e => {
-          e.target.style.borderColor = 'var(--bg-border)'
-          e.target.style.boxShadow   = 'none'
-        }}
+        onFocus={e => { e.target.style.borderColor = 'var(--accent)'; e.target.style.boxShadow = '0 0 0 3px var(--accent-dim)' }}
+        onBlur={e =>  { e.target.style.borderColor = 'var(--bg-border)'; e.target.style.boxShadow = 'none' }}
       />
       {error && <p className="font-body text-xs" style={{ color: 'var(--error)' }}>{error}</p>}
       <div className="flex gap-2">
@@ -519,35 +486,51 @@ function RequestChanges({ task, sessionId, onDone, onCancel }) {
 export default function CodeReview({ session, onApproved, onPushComplete, onRefetch }) {
   const tasks = session?.tasks || []
 
-  const readyTask   = tasks.find(t => t.status === 'awaiting_approval')
-  const [activeTask, setActiveTask] = useState(readyTask || tasks[0])
-  const [approving,  setApproving]  = useState(false)
-  const [pushing,    setPushing]    = useState(false)
-  const [showRequest, setShowRequest] = useState(false)
-  const [showPush,    setShowPush]    = useState(false)
-  const [pushed,      setPushed]      = useState(session?.status === 'done')
-  const [error,       setError]       = useState(null)
+  const readyTask = tasks.find(t => t.status === 'awaiting_approval')
+  const [activeTask,   setActiveTask]   = useState(readyTask || tasks[0])
+  const [approving,    setApproving]    = useState(false)
+  const [showRequest,  setShowRequest]  = useState(false)
+  // Fix #4: store real branch + github_url from approve response
+  const [pushResult,   setPushResult]   = useState(
+    session?.status === 'done' ? { branch: null, githubUrl: null } : null
+  )
+  const [error, setError] = useState(null)
 
-  // Determine which task to show
   const currentTask = activeTask || readyTask || tasks[0]
   const draft       = currentTask?.code_drafts?.[0]
   const allApproved = tasks.every(t => t.status === 'done')
 
+  // Fix #5: compute diff from original_content + new_content
+  const diffText = useMemo(() => {
+    if (!draft) return ''
+    // If backend ever adds a pre-computed diff field, prefer it
+    if (draft.diff) return draft.diff
+    return computeUnifiedDiff(
+      draft.original_content ?? '',
+      draft.new_content      ?? '',
+      currentTask?.file_path,
+    )
+  }, [draft?.id, draft?.original_content, draft?.new_content, currentTask?.file_path])
+
   async function handleApprove() {
-    if (!currentTask) return
+    if (!draft?.id) return
     setError(null)
     setApproving(true)
     try {
-      await apiFetch('/agent/approve-code', {
+      // Fix #2: correct endpoint + payload ({ draft_id } only)
+      const res = await apiFetch('/agent/approve', {
         method: 'POST',
-        body: JSON.stringify({
-          session_id: session.id,
-          subtask_id: currentTask.id,
-          draft_id:   draft?.id,
-        }),
+        body: JSON.stringify({ draft_id: draft.id }),
       })
-      onApproved?.()
-      onRefetch?.()
+      // Fix #4: if this was the last task the backend pushes automatically.
+      // Capture branch + github_url so PushSuccess can use real data.
+      if (res?.branch) {
+        setPushResult({ branch: res.branch, githubUrl: res.github_url })
+        onPushComplete?.()
+      } else {
+        onApproved?.()
+        onRefetch?.()
+      }
     } catch (err) {
       setError(err.message)
     } finally {
@@ -555,33 +538,12 @@ export default function CodeReview({ session, onApproved, onPushComplete, onRefe
     }
   }
 
-  async function handlePush() {
-    setPushing(true)
-    setError(null)
-    try {
-      await apiFetch('/agent/push', {
-        method: 'POST',
-        body: JSON.stringify({ session_id: session.id }),
-      })
-      setPushed(true)
-      onPushComplete?.()
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setPushing(false)
-    }
-  }
-
   // Completed push state
-  if (pushed) return <PushSuccess session={session} />
-
-  // Push confirmation
-  if (showPush) return (
-    <PushConfirmation
+  if (pushResult) return (
+    <PushSuccess
+      branch={pushResult.branch}
+      githubUrl={pushResult.githubUrl}
       session={session}
-      onPush={handlePush}
-      onCancel={() => setShowPush(false)}
-      pushing={pushing}
     />
   )
 
@@ -618,12 +580,9 @@ export default function CodeReview({ session, onApproved, onPushComplete, onRefe
           </div>
         )}
 
-        {/* Diff viewer */}
-        {draft?.generated_code ? (
-          <DiffViewer
-            diffText={draft.generated_code}
-            fileName={currentTask?.file_path}
-          />
+        {/* Diff viewer — Fix #5: uses computed diffText */}
+        {diffText ? (
+          <DiffViewer diffText={diffText} fileName={currentTask?.file_path} />
         ) : (
           <div
             className="rounded-lg flex items-center justify-center py-12"
@@ -652,10 +611,7 @@ export default function CodeReview({ session, onApproved, onPushComplete, onRefe
             >
               What changed and why
             </p>
-            <p
-              className="font-body text-sm leading-relaxed"
-              style={{ color: 'var(--text-secondary)' }}
-            >
+            <p className="font-body text-sm leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
               {draft.explanation}
             </p>
           </div>
@@ -665,7 +621,6 @@ export default function CodeReview({ session, onApproved, onPushComplete, onRefe
         {showRequest && currentTask && (
           <RequestChanges
             task={currentTask}
-            sessionId={session.id}
             onDone={() => { setShowRequest(false); onRefetch?.() }}
             onCancel={() => setShowRequest(false)}
           />
@@ -682,22 +637,16 @@ export default function CodeReview({ session, onApproved, onPushComplete, onRefe
         style={{ borderTop: '1px solid var(--bg-border)', background: 'var(--bg-surface)' }}
       >
         {allApproved ? (
-          /* All subtasks done — offer push */
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center gap-2 mb-1">
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-                <path d="M2 6.5L4.5 9L10 3" stroke="var(--success)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              <span className="font-mono text-xs" style={{ color: 'var(--success)' }}>
-                All {tasks.length} subtask{tasks.length > 1 ? 's' : ''} approved
-              </span>
-            </div>
-            <Button variant="primary" size="md" fullWidth onClick={() => setShowPush(true)}>
-              Push to GitHub →
-            </Button>
+          // All subtasks done — last approve call already pushed, show status
+          <div className="flex items-center gap-2">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+              <path d="M2 6.5L4.5 9L10 3" stroke="var(--success)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <span className="font-mono text-xs" style={{ color: 'var(--success)' }}>
+              All {tasks.length} subtask{tasks.length > 1 ? 's' : ''} approved — pushing…
+            </span>
           </div>
         ) : currentTask?.status === 'awaiting_approval' ? (
-          /* Current task needs review */
           <div className="flex gap-2">
             <Button
               variant="primary"
@@ -717,7 +666,6 @@ export default function CodeReview({ session, onApproved, onPushComplete, onRefe
             </Button>
           </div>
         ) : (
-          /* Waiting for coder */
           <div className="flex items-center gap-2" style={{ color: 'var(--text-muted)' }}>
             <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin-slow" />
             <span className="font-mono text-xs">
