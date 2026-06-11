@@ -57,10 +57,11 @@ export default function NewTaskPage() {
       const data = await apiFetch('/agent/start', {
         method: 'POST',
         body: JSON.stringify({
-          repo_id:       selectedRepo.id,
-          task:          task.trim(),
-          planner_model: plannerModel,
-          coder_model:   coderModel,
+          repo_id:      selectedRepo.id,
+          task:         task.trim(),
+          // FIX #1: backend expects camelCase, not snake_case
+          plannerModel: plannerModel,
+          coderModel:   coderModel,
         }),
       })
       router.push(`/app/session/${data.session_id}`)
@@ -112,7 +113,7 @@ export default function NewTaskPage() {
           </p>
         )}
 
-        {/* Task textarea — Run Forge button sits inside, bottom-right (matches mockup) */}
+        {/* Task textarea — Run Forge button sits inside, bottom-right */}
         <div
           className="relative rounded-xl"
           style={{
@@ -135,12 +136,12 @@ export default function NewTaskPage() {
             }
             className="w-full resize-none font-body text-sm leading-relaxed"
             style={{
-              background:  'transparent',
-              border:      'none',
-              outline:     'none',
-              padding:     '16px',
+              background:    'transparent',
+              border:        'none',
+              outline:       'none',
+              padding:       '16px',
               paddingBottom: '56px',
-              color:       'var(--text-primary)',
+              color:         'var(--text-primary)',
             }}
           />
 
